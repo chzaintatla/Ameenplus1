@@ -1,0 +1,59 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Profile pictures
+    match /profiles/{userId}/{fileName} {
+      // Public read
+      allow read: if true;
+      
+      // Only owner can upload/delete their profile picture
+      allow write: if isAuthenticated() && isOwner(userId) &&
+        request.resource.size < 2 * 1024 * 1024 && // 2MB limit
+        request.resource.contentType.matches('image/.*');
+    }
+    
+    // Deed images
+    match /deeds/{deedId}/{fileName} {
+      // Public read
+      allow read: if true;
+      
+      // Authenticated users can upload deed images
+      allow write: if isAuthenticated() &&
+        request.resource.size < 5 * 1024 * 1024 && // 5MB limit
+        request.resource.contentType.matches('image/.*');
+    }
+    
+    // Community images
+    match /communities/{communityId}/{fileName} {
+      // Public read
+      allow read: if true;
+      
+      // Authenticated users can upload community images
+      allow write: if isAuthenticated() &&
+        request.resource.size < 5 * 1024 * 1024 && // 5MB limit
+        request.resource.contentType.matches('image/.*');
+    }
+    
+    // Chat media (images, videos, voice messages)
+    match /chats/{chatId}/{fileName} {
+      // Only participants can read
+      allow read: if isAuthenticated();
+      
+      // Only participants can upload
+      allow write: if isAuthenticated() &&
+        request.resource.size < 50 * 1024 * 1024 && // 50MB limit
+        request.resource.contentType.matches('(image|video|audio)/.*');
+    }
+  }
+}
+

@@ -1,0 +1,251 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isMember(list) {
+      return isAuthenticated() && request.auth.uid in list;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile completely
+      // Others can only read public profiles, but email/phone are private unless explicitly made public
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || 
+        (resource.data.isProfilePublic == true)
+      );
+      
+      // Users can only write their own profile
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && isOwner(userId);
+      allow delete: if isAuthenticated() && isOwner(userId);
+      
+      // Note: Email and phone privacy is enforced at application level
+      // The isEmailPublic and isPhonePublic flags control visibility
+      // Firestore rules allow reading the document, but app should filter sensitive fields
+    }
+    
+    // Deeds collection (posts)
+    match /deeds/{deedId} {
+      // Authenticated users can read all deeds
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create deeds
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Only deed owner can update/delete
+      allow update: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Comments subcollection
+      match /comments/{commentId} {
+        // Authenticated users can read comments
+        allow read: if isAuthenticated();
+        
+        // Authenticated users can create comments
+        allow create: if isAuthenticated() && 
+          request.resource.data.userId == request.auth.uid;
+        
+        // Only comment owner can delete
+        allow delete: if isAuthenticated() && 
+          resource.data.userId == request.auth.uid;
+        
+        // Comment owner can update (for likes)
+        allow update: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['likes'])
+        );
+      }
+    }
+    
+    // Habits collection
+    match /habits/{habitId} {
+      // Users can only read their own habits
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Users can create habits (must set their own userId)
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can update/delete their own habits
+      allow update, delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Moods collection
+    match /moods/{moodId} {
+      // Users can only read their own moods
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Users can create moods (must set their own userId)
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can update/delete their own moods
+      allow update, delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Communities collection
+    match /communities/{communityId} {
+      // Authenticated users can read all public communities
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create communities
+      allow create: if isAuthenticated() && 
+        request.resource.data.creatorId == request.auth.uid;
+      
+      // Creator and admins can update
+      allow update: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid ||
+        request.auth.uid in resource.data.get('admins', []) ||
+        // Allow members to join/leave (updating members array)
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['members', 'updatedAt'])
+      );
+      
+      // Only creator can delete
+      allow delete: if isAuthenticated() && 
+        resource.data.creatorId == request.auth.uid;
+    }
+    
+    // Chats collection
+    match /chats/{chatId} {
+      // Helper function to check if document exists
+      function chatExists() {
+        return exists(/databases/$(database)/documents/chats/$(chatId));
+      }
+      
+      // Users can read chats they're participants in, or community chats
+      // Allow reading non-existent documents (for get() before create)
+      allow read: if isAuthenticated() && (
+        !chatExists() ||
+        request.auth.uid in resource.data.participants ||
+        resource.data.get('isCommunityChat', false) == true
+      );
+      
+      // Users can create chats (must include themselves as participant, or community chat)
+      allow create: if isAuthenticated() && (
+        request.auth.uid in request.resource.data.participants ||
+        request.resource.data.get('isCommunityChat', false) == true
+      );
+      
+      // Participants can update chat (for lastMessage, unreadCounts)
+      allow update: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants ||
+        resource.data.get('isCommunityChat', false) == true
+      );
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Helper function to get chat data and check access
+        function canAccessChatMessages() {
+          let chatPath = /databases/$(database)/documents/chats/$(chatId);
+          return !exists(chatPath) || 
+                 request.auth.uid in get(chatPath).data.participants ||
+                 get(chatPath).data.get('isCommunityChat', false) == true;
+        }
+        
+        // Participants can read messages
+        allow read: if isAuthenticated() && canAccessChatMessages();
+        
+        // Authenticated users can send messages (if they're participants or community chat)
+        allow create: if isAuthenticated() && 
+          request.auth.uid == request.resource.data.senderId && 
+          canAccessChatMessages();
+        
+        // Message sender can update (for read status)
+        allow update: if isAuthenticated() && (
+          resource.data.senderId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['read'])
+        );
+        
+        // Message sender can delete their own messages
+        allow delete: if isAuthenticated() && 
+          resource.data.senderId == request.auth.uid;
+      }
+    }
+    
+    // Friend requests collection
+    match /friend_requests/{requestId} {
+      // Users can read requests they sent or received
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      
+      // Users can create friend requests
+      allow create: if isAuthenticated() && 
+        request.resource.data.senderId == request.auth.uid;
+      
+      // Only receiver can update (accept/reject)
+      allow update: if isAuthenticated() && 
+        resource.data.receiverId == request.auth.uid &&
+        resource.data.status == 'pending';
+      
+      // Sender or receiver can delete
+      allow delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+    }
+    
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Users can only read/write their own notifications
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // System can create notifications (or users can create for themselves)
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        // Allow creating notifications for others (for system notifications)
+        true  // In production, you might want to restrict this
+      );
+      
+      // Users can update their own notifications (mark as read)
+      allow update: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own notifications
+      allow delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Public leaderboard collection
+    match /leaderboard_public/{userId} {
+      // Anyone can read leaderboard
+      allow read: if true;
+      
+      // Users can only write their own entry
+      allow write: if isAuthenticated() && 
+        request.auth.uid == userId;
+    }
+    
+    // Badges collection (if used)
+    match /badges/{badgeId} {
+      // Public read
+      allow read: if true;
+      
+      // Only system/admins can write (restrict in production)
+      allow write: if isAuthenticated();
+    }
+  }
+}
+
