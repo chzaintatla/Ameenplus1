@@ -11,7 +11,13 @@ gradle.projectsEvaluated {
         tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
             kotlinOptions {
                 jvmTarget = "17"
+                freeCompilerArgs += listOf("-Xsuppress-version-warnings")
             }
+        }
+        
+        // Suppress Java deprecation warnings for all subprojects
+        tasks.withType<JavaCompile>().configureEach {
+            options.compilerArgs.add("-Xlint:-deprecation")
         }
     }
 }
