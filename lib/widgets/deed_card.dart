@@ -71,27 +71,54 @@ class DeedCard extends ConsumerWidget {
             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: mediaQuery.size.width * 0.06,
-                  backgroundImage: deed.userPhotoUrl != null
-                      ? CachedNetworkImageProvider(deed.userPhotoUrl!)
-                      : null,
-                  child: deed.userPhotoUrl == null
-                      ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
-                      : null,
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: mediaQuery.size.width * 0.06,
+                      backgroundImage: deed.userPhotoUrl != null
+                          ? CachedNetworkImageProvider(deed.userPhotoUrl!)
+                          : null,
+                      child: deed.userPhotoUrl == null
+                          ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
+                          : null,
+                    ),
+                    if (deed.isValidated)
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.verified,
+                            size: mediaQuery.size.width * 0.03,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 SizedBox(width: mediaQuery.size.width * 0.03),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        deed.userName,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              deed.userName,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                       Text(
                         timeago.format(deed.createdAt),
@@ -223,6 +250,28 @@ class DeedCard extends ConsumerWidget {
                         fontStyle: FontStyle.italic,
                       ),
                 ),
+              ),
+            ),
+          ],
+          if (deed.interests.isNotEmpty) ...[
+            SizedBox(height: mediaQuery.size.height * 0.01),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: deed.interests.map((interest) {
+                  return Chip(
+                    label: Text(
+                      interest,
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(),
               ),
             ),
           ],

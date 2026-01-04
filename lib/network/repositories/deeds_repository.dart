@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -26,57 +27,69 @@ class DeedsRepository {
     String? reference,
     String? category,
     String? imagePath,
+    String? videoPath,
+    String? filePath,
+    String? mediaType,
+    List<String> interests = const [],
+    bool isValidated = false,
+    String? validationReason,
+    double? validationConfidence,
   }) async {
     try {
       String? imageUrl;
+      List<String> mediaUrls = [];
 
+      // Upload image
       if (imagePath != null && !imagePath.startsWith('http')) {
         final file = File(imagePath);
-
-        if (!await file.exists()) {
-          throw Exception('Image file not found');
-        }
-
-        if (await file.length() > 10 * 1024 * 1024) {
-          throw Exception('Image must be less than 10MB');
-        }
-
-        final fileName = '${const Uuid().v4()}.jpg';
-
-        final ref = _storage
-            .ref()
-            .child('deeds')
-            .child(userId)
-            .child(fileName);
-
-        try {
-          await ref.putFile(
-            file,
-            SettableMetadata(contentType: 'image/jpeg'),
-          );
-
+        if (await file.exists()) {
+          if (await file.length() > 10 * 1024 * 1024) {
+            throw Exception('Image must be less than 10MB');
+          }
+          final fileName = '${const Uuid().v4()}.jpg';
+          final ref = _storage.ref().child('deeds').child(userId).child(fileName);
+          await ref.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
           imageUrl = await ref.getDownloadURL();
-        } on FirebaseException catch (e) {
-          if (e.code == 'object-not-found' || e.code == '-13010') {
-            throw Exception('Storage rules not deployed or permission denied. Please ensure Storage rules are deployed in Firebase Console.');
-          } else if (e.code == 'unauthorized' || e.code == 'permission-denied') {
-            throw Exception('Permission denied. Please check your Storage rules allow authenticated uploads.');
-          } else if (e.code == 'quota-exceeded') {
-            throw Exception('Storage quota exceeded. Please contact support.');
-          } else if (e.code == 'unauthenticated') {
-            throw Exception('Please sign in to upload images.');
+          mediaUrls.add(imageUrl);
+        }
+      }
+
+      // Upload video
+      if (videoPath != null && !videoPath.startsWith('http')) {
+        final file = File(videoPath);
+        if (await file.exists()) {
+          if (await file.length() > 50 * 1024 * 1024) {
+            throw Exception('Video must be less than 50MB');
           }
-          throw Exception('Upload failed: ${e.message ?? e.code}');
-        } catch (e) {
-          final errorStr = e.toString().toLowerCase();
-          if (errorStr.contains('404') || errorStr.contains('not found') || errorStr.contains('object-not-found')) {
-            throw Exception('Storage service unavailable. Please ensure Storage rules are deployed in Firebase Console.');
-          } else if (errorStr.contains('permission') || errorStr.contains('denied')) {
-            throw Exception('Permission denied. Please check your Storage rules allow authenticated uploads.');
-          } else if (errorStr.contains('network') || errorStr.contains('connection')) {
-            throw Exception('Network error. Please check your internet connection and try again.');
+          final fileName = '${const Uuid().v4()}.mp4';
+          final ref = _storage.ref().child('deeds').child(userId).child(fileName);
+          await ref.putFile(file, SettableMetadata(contentType: 'video/mp4'));
+          final videoUrl = await ref.getDownloadURL();
+          mediaUrls.add(videoUrl);
+        }
+      }
+
+      // Upload other files (PDF, Audio, Word, Excel)
+      if (filePath != null && !filePath.startsWith('http')) {
+        final file = File(filePath);
+        if (await file.exists()) {
+          final maxSize = mediaType == 'pdf' || mediaType == 'audio' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+          if (await file.length() > maxSize) {
+            throw Exception('File must be less than ${maxSize ~/ (1024 * 1024)}MB');
           }
-          rethrow;
+          
+          String extension = filePath.split('.').last.toLowerCase();
+          String contentType = 'application/octet-stream';
+          if (extension == 'pdf') contentType = 'application/pdf';
+          else if (['mp3', 'wav', 'm4a'].contains(extension)) contentType = 'audio/$extension';
+          else if (['doc', 'docx'].contains(extension)) contentType = 'application/msword';
+          else if (['xls', 'xlsx'].contains(extension)) contentType = 'application/vnd.ms-excel';
+          
+          final fileName = '${const Uuid().v4()}.$extension';
+          final ref = _storage.ref().child('deeds').child(userId).child(fileName);
+          await ref.putFile(file, SettableMetadata(contentType: contentType));
+          final fileUrl = await ref.getDownloadURL();
+          mediaUrls.add(fileUrl);
         }
       }
 
@@ -94,6 +107,12 @@ class DeedsRepository {
         reference: reference,
         category: category,
         imageUrl: imageUrl,
+        mediaUrls: mediaUrls,
+        mediaType: mediaType,
+        interests: interests,
+        isValidated: isValidated,
+        validationReason: validationReason,
+        validationConfidence: validationConfidence,
         createdAt: DateTime.now(),
       );
 
@@ -122,13 +141,67 @@ class DeedsRepository {
   }
 
   Stream<List<DeedModel>> getUserDeeds(String userId, {int limit = 50}) {
-    return _firestore
+    final controller = StreamController<List<DeedModel>>();
+    StreamSubscription? subscription;
+    bool fallbackUsed = false;
+    
+    subscription = _firestore
         .collection(AppConstants.collectionDeeds)
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((s) => s.docs.map((d) => DeedModel.fromFirestore(d)).toList());
+        .map((s) => s.docs.map((d) => DeedModel.fromFirestore(d)).toList())
+        .listen(
+          (deeds) {
+            if (!fallbackUsed) {
+              controller.add(deeds);
+            }
+          },
+          onError: (error) {
+            final errorStr = error.toString();
+            if ((errorStr.contains('index') || errorStr.contains('FAILED_PRECONDITION')) && !fallbackUsed) {
+              fallbackUsed = true;
+              subscription?.cancel();
+              _getUserDeedsFallback(userId, limit).listen(
+                (deeds) => controller.add(deeds),
+                onError: (e) => controller.addError(e),
+                onDone: () => controller.close(),
+                cancelOnError: false,
+              );
+            } else {
+              controller.addError(error);
+            }
+          },
+          onDone: () {
+            if (!fallbackUsed) {
+              controller.close();
+            }
+          },
+          cancelOnError: false,
+        );
+    
+    controller.onCancel = () {
+      subscription?.cancel();
+    };
+    
+    return controller.stream;
+  }
+
+  Stream<List<DeedModel>> _getUserDeedsFallback(String userId, int limit) async* {
+    try {
+      await for (final snapshot in _firestore
+          .collection(AppConstants.collectionDeeds)
+          .where('userId', isEqualTo: userId)
+          .limit(limit * 2)
+          .snapshots()) {
+        final deeds = snapshot.docs.map((d) => DeedModel.fromFirestore(d)).toList();
+        deeds.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        yield deeds.take(limit).toList();
+      }
+    } catch (e) {
+      yield <DeedModel>[];
+    }
   }
 
   Future<void> likeDeed(String deedId, String userId) async {

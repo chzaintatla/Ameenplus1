@@ -12,10 +12,10 @@ class AmeenTheme {
   static const Color primaryGreenLight = Color(0xFF2E7D32);
   static const Color primaryGreenDark = Color(0xFF0D3315);
   
-  // Sacred Gold Palette
-  static const Color sacredGold = Color(0xFFFFD700);
-  static const Color sacredGoldLight = Color(0xFFFFE44D);
-  static const Color sacredGoldDark = Color(0xFFB8930B);
+  // Sacred White/Green Palette (replaced yellow/gold)
+  static const Color sacredGold = Colors.white; // White for backgrounds
+  static const Color sacredGoldLight = Color(0xFFE8F5E9); // Light green
+  static const Color sacredGoldDark = Color(0xFF4CAF50); // Medium green
   
   // Accent Colors
   static const Color accentTeal = Color(0xFF00796B);
@@ -50,7 +50,7 @@ class AmeenTheme {
   );
   
   static const LinearGradient goldGradient = LinearGradient(
-    colors: [sacredGoldLight, sacredGoldDark],
+    colors: [sacredGoldLight, primaryGreenLight], // Green gradient instead of gold
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
@@ -73,16 +73,15 @@ class AmeenTheme {
         primary: primaryGreen,
         onPrimary: Colors.white,
         primaryContainer: primaryGreenLight,
-        secondary: sacredGold,
-        onSecondary: primaryGreen,
-        secondaryContainer: sacredGoldLight,
+        secondary: primaryGreenLight, // Green instead of gold
+        onSecondary: Colors.white,
+        secondaryContainer: sacredGoldLight, // Light green
         tertiary: accentTeal,
         error: error,
         surface: lightSurface,
         onSurface: textPrimary,
       ),
       
-      // Scaffold
       scaffoldBackgroundColor: lightBackground,
       
       // AppBar Theme
@@ -199,8 +198,8 @@ class AmeenTheme {
       
       // Floating Action Button
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: sacredGold,
-        foregroundColor: primaryGreen,
+        backgroundColor: primaryGreen, // Green instead of gold
+        foregroundColor: Colors.white,
         elevation: 4,
       ),
       
@@ -208,7 +207,7 @@ class AmeenTheme {
       chipTheme: ChipThemeData(
         backgroundColor: primaryGreenLight.withValues(alpha: 0.1),
         selectedColor: primaryGreen,
-        secondarySelectedColor: sacredGold,
+        secondarySelectedColor: primaryGreenLight, // Light green instead of gold
         labelStyle: GoogleFonts.poppins(
           fontSize: 12,
           fontWeight: FontWeight.w500,

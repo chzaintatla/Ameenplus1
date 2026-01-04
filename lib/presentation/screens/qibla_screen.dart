@@ -2,14 +2,20 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_compass/flutter_compass.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' as geo;
+import '../../services/qibla_compass_service.dart';
+import '../../widgets/kaaba_image_widget.dart';
 
-const double kaabaLatitude = 21.4225;
-const double kaabaLongitude = 39.8262;
+const double kaabaLatitude = 21.4225241;
+const double kaabaLongitude = 39.8261818;
+
+final qiblaCompassServiceProvider = Provider<QiblaCompassService>((ref) {
+  return QiblaCompassService();
+});
 
 final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
   try {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       yield {
         'error': 'Location services are disabled',
@@ -19,10 +25,10 @@ final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
       return;
     }
 
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
+    geo.LocationPermission permission = await geo.Geolocator.checkPermission();
+    if (permission == geo.LocationPermission.denied) {
+      permission = await geo.Geolocator.requestPermission();
+      if (permission == geo.LocationPermission.denied) {
         yield {
           'error': 'Location permission denied',
           'compassHeading': 0.0,
@@ -32,7 +38,7 @@ final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
       }
     }
 
-    if (permission == LocationPermission.deniedForever) {
+    if (permission == geo.LocationPermission.deniedForever) {
       yield {
         'error': 'Location permission permanently denied',
         'compassHeading': 0.0,
@@ -41,17 +47,26 @@ final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
       return;
     }
 
-    Position position = await Geolocator.getCurrentPosition();
+    geo.Position position = await geo.Geolocator.getCurrentPosition(
+      desiredAccuracy: geo.LocationAccuracy.high,
+    );
 
-    final qiblaDirection = _calculateQiblaDirection(
+    final qiblaService = QiblaCompassService();
+    final qiblaDirection = qiblaService.calculateQiblaDirection(
       position.latitude,
       position.longitude,
     );
 
     await for (final compassEvent in FlutterCompass.events!) {
       if (compassEvent.heading != null) {
+        var heading = compassEvent.heading!;
+        if (heading < 0) {
+          heading += 360;
+        }
+        heading = heading % 360;
+        
         yield {
-          'compassHeading': compassEvent.heading!,
+          'compassHeading': heading,
           'qiblaDirection': qiblaDirection,
           'latitude': position.latitude,
           'longitude': position.longitude,
@@ -67,34 +82,57 @@ final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
   }
 });
 
-double _calculateQiblaDirection(double latitude, double longitude) {
-  final lat1 = latitude * math.pi / 180;
-  final lon1 = longitude * math.pi / 180;
-  final lat2 = kaabaLatitude * math.pi / 180;
-  final lon2 = kaabaLongitude * math.pi / 180;
 
-  final dLon = lon2 - lon1;
-  final y = math.sin(dLon) * math.cos(lat2);
-  final x = math.cos(lat1) * math.sin(lat2) -
-            math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
-
-  final bearing = math.atan2(y, x);
-
-  final bearingDegrees = (bearing * 180 / math.pi + 360) % 360;
-
-  return bearingDegrees;
-}
-
-class QiblaScreen extends ConsumerWidget {
+class QiblaScreen extends ConsumerStatefulWidget {
   const QiblaScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<QiblaScreen> createState() => _QiblaScreenState();
+}
+
+class _QiblaScreenState extends ConsumerState<QiblaScreen> {
+  CompassAccuracy? _compassAccuracy;
+  QiblaLocationAccuracy? _locationAccuracy;
+  bool _isValidating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _validateAccuracy();
+  }
+
+  Future<void> _validateAccuracy() async {
+    setState(() => _isValidating = true);
+    final qiblaService = ref.read(qiblaCompassServiceProvider);
+    final compassAcc = await qiblaService.validateCompassAccuracy();
+    final locationAcc = await qiblaService.validateLocationAccuracy();
+    setState(() {
+      _compassAccuracy = compassAcc;
+      _locationAccuracy = locationAcc;
+      _isValidating = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final qiblaAsync = ref.watch(qiblaProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Qibla Direction'),
+        actions: [
+          IconButton(
+            icon: _isValidating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _isValidating ? null : _validateAccuracy,
+            tooltip: 'Validate Accuracy',
+          ),
+        ],
       ),
       body: qiblaAsync.when(
         data: (data) {
@@ -142,14 +180,62 @@ class QiblaScreen extends ConsumerWidget {
           final latitude = data['latitude'] as double?;
           final longitude = data['longitude'] as double?;
 
-          double angleDifference = qiblaDirection - compassHeading;
-          if (angleDifference < 0) {
-            angleDifference += 360;
-          }
+          final qiblaService = ref.read(qiblaCompassServiceProvider);
+          final angleDifference = qiblaService.calculateAngleDifference(compassHeading, qiblaDirection);
+          final isPointing = qiblaService.isPointingToQibla(compassHeading, qiblaDirection);
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (_compassAccuracy != null || _locationAccuracy != null)
+                Card(
+                  color: _getAccuracyCardColor(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _getAccuracyIcon(),
+                          color: _getAccuracyIconColor(),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _getAccuracyMessage(),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: _getAccuracyIconColor(),
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_compassAccuracy != null || _locationAccuracy != null)
+                const SizedBox(height: 16),
+              if (isPointing)
+                Card(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'You are pointing towards Qibla! (${angleDifference.toStringAsFixed(1)}° off)',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.green,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (isPointing) const SizedBox(height: 16),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -159,9 +245,32 @@ class QiblaScreen extends ConsumerWidget {
                         width: double.infinity,
                         child: AspectRatio(
                           aspectRatio: 1,
-                          child: _CompassWidget(
-                            compassHeading: compassHeading,
-                            qiblaDirection: qiblaDirection,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              _CompassWidget(
+                                compassHeading: compassHeading,
+                                qiblaDirection: qiblaDirection,
+                              ),
+                              // Kaaba image at the center pointing towards Qibla
+                              Positioned(
+                                child: StreamBuilder<CompassEvent>(
+                                  stream: FlutterCompass.events,
+                                  builder: (context, snapshot) {
+                                    if (!snapshot.hasData || snapshot.data!.heading == null) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final heading = snapshot.data!.heading!;
+                                    final relativeQiblaAngle = 
+                                        ((qiblaDirection - heading + 360) % 360) * math.pi / 180;
+                                    return KaabaImageWidget(
+                                      rotationAngle: relativeQiblaAngle,
+                                      size: 100,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -175,11 +284,55 @@ class QiblaScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'The green arrow points to the Kaaba in Mecca',
+                        'The Kaaba image at the center points towards the Holy Kaaba in Mecca',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Green arrow = Qibla direction',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Color(0xFF8B4513), Color(0xFF654321)],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Center image = Kaaba (rotate device to align)',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -265,11 +418,16 @@ class QiblaScreen extends ConsumerWidget {
                       _buildInstructionItem(
                         context,
                         '2',
-                        'Rotate your device until the arrow points up',
+                        'Move away from magnetic interference (metal, electronics)',
                       ),
                       _buildInstructionItem(
                         context,
                         '3',
+                        'Rotate your device until the green arrow points up',
+                      ),
+                      _buildInstructionItem(
+                        context,
+                        '4',
                         'You are now facing the Qibla direction',
                       ),
                     ],
@@ -318,6 +476,83 @@ class QiblaScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Color _getAccuracyCardColor() {
+    if (_compassAccuracy == CompassAccuracy.accurate && 
+        _locationAccuracy == QiblaLocationAccuracy.high) {
+      return Colors.green.withValues(alpha: 0.1);
+    } else if (_compassAccuracy == CompassAccuracy.unstable || 
+               _locationAccuracy == QiblaLocationAccuracy.low) {
+      return Colors.red.withValues(alpha: 0.1);
+    }
+    return Colors.orange.withValues(alpha: 0.1);
+  }
+
+  IconData _getAccuracyIcon() {
+    if (_compassAccuracy == CompassAccuracy.accurate && 
+        _locationAccuracy == QiblaLocationAccuracy.high) {
+      return Icons.check_circle;
+    } else if (_compassAccuracy == CompassAccuracy.unstable || 
+               _locationAccuracy == QiblaLocationAccuracy.low) {
+      return Icons.warning;
+    }
+    return Icons.info;
+  }
+
+  Color _getAccuracyIconColor() {
+    if (_compassAccuracy == CompassAccuracy.accurate && 
+        _locationAccuracy == QiblaLocationAccuracy.high) {
+      return Colors.green;
+    } else if (_compassAccuracy == CompassAccuracy.unstable || 
+               _locationAccuracy == QiblaLocationAccuracy.low) {
+      return Colors.red;
+    }
+    return Colors.orange;
+  }
+
+  String _getAccuracyMessage() {
+    final compassMsg = _compassAccuracy != null 
+        ? 'Compass: ${_getCompassAccuracyText(_compassAccuracy!)}'
+        : '';
+    final locationMsg = _locationAccuracy != null
+        ? 'Location: ${_getLocationAccuracyText(_locationAccuracy!)}'
+        : '';
+    
+    if (compassMsg.isNotEmpty && locationMsg.isNotEmpty) {
+      return '$compassMsg • $locationMsg';
+    } else if (compassMsg.isNotEmpty) {
+      return compassMsg;
+    } else if (locationMsg.isNotEmpty) {
+      return locationMsg;
+    }
+    return 'Validating accuracy...';
+  }
+
+  String _getCompassAccuracyText(CompassAccuracy accuracy) {
+    switch (accuracy) {
+      case CompassAccuracy.accurate:
+        return 'Accurate';
+      case CompassAccuracy.moderate:
+        return 'Moderate';
+      case CompassAccuracy.unstable:
+        return 'Unstable - Move away from interference';
+      case CompassAccuracy.unavailable:
+        return 'Unavailable';
+      case CompassAccuracy.noPermission:
+        return 'Permission needed';
+    }
+  }
+
+  String _getLocationAccuracyText(QiblaLocationAccuracy accuracy) {
+    switch (accuracy) {
+      case QiblaLocationAccuracy.high:
+        return 'High';
+      case QiblaLocationAccuracy.medium:
+        return 'Medium';
+      case QiblaLocationAccuracy.low:
+        return 'Low - Enable GPS';
+    }
   }
 
   Widget _buildInfoRow(BuildContext context, String label, String value, IconData icon) {
@@ -402,26 +637,32 @@ class _CompassWidget extends StatefulWidget {
 class _CompassWidgetState extends State<_CompassWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  double _previousCompassHeading = 0.0;
+  double _smoothedHeading = 0.0;
+  static const double _smoothingFactor = 0.15;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 200),
     );
-    _previousCompassHeading = widget.compassHeading;
+    _smoothedHeading = widget.compassHeading;
     _controller.value = 1.0;
   }
 
   @override
   void didUpdateWidget(_CompassWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if ((widget.compassHeading - _previousCompassHeading).abs() > 1.0) {
+    final headingDiff = (widget.compassHeading - _smoothedHeading).abs();
+    final normalizedDiff = headingDiff > 180 ? 360 - headingDiff : headingDiff;
+    
+    if (normalizedDiff > 0.5) {
+      _smoothedHeading = _smoothedHeading + (widget.compassHeading - _smoothedHeading) * _smoothingFactor;
+      if (_smoothedHeading < 0) _smoothedHeading += 360;
+      if (_smoothedHeading >= 360) _smoothedHeading -= 360;
       _controller.reset();
       _controller.forward();
-      _previousCompassHeading = widget.compassHeading;
     }
   }
 
@@ -435,17 +676,13 @@ class _CompassWidgetState extends State<_CompassWidget>
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final size = mediaQuery.size.width - 80;
-    
-    double angleDifference = widget.qiblaDirection - widget.compassHeading;
-    if (angleDifference < 0) {
-      angleDifference += 360;
-    }
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final compassAngle = -widget.compassHeading * math.pi / 180;
-        final qiblaAngle = angleDifference * math.pi / 180;
+        final compassAngle = -_smoothedHeading * math.pi / 180;
+        final relativeQiblaAngle = (widget.qiblaDirection - _smoothedHeading + 360) % 360;
+        final qiblaAngleRad = relativeQiblaAngle * math.pi / 180;
 
         return Stack(
           alignment: Alignment.center,
@@ -455,9 +692,17 @@ class _CompassWidgetState extends State<_CompassWidget>
               child: CustomPaint(
                 size: Size(size, size),
                 painter: CompassPainter(
-                  qiblaAngle: qiblaAngle,
+                  qiblaAngle: qiblaAngleRad,
                   qiblaDirection: widget.qiblaDirection,
                 ),
+              ),
+            ),
+            // Kaaba Image pointing to Qibla
+            Transform.rotate(
+              angle: qiblaAngleRad,
+              child: KaabaImageWidget(
+                rotationAngle: 0, // Image itself doesn't need rotation, compass handles it
+                size: size * 0.15,
               ),
             ),
             Container(
@@ -631,22 +876,20 @@ class CompassPainter extends CustomPainter {
 
     final qiblaPath = Path();
     final qiblaLength = radius * 0.35;
-    final qiblaWidth = 8.0;
+    final qiblaWidth = 10.0;
 
     final qiblaAngleRad = qiblaAngle;
     final qiblaX = center.dx + qiblaLength * math.sin(qiblaAngleRad);
     final qiblaY = center.dy - qiblaLength * math.cos(qiblaAngleRad);
 
+    final perpAngle = qiblaAngleRad + math.pi / 2;
+    final perpX = math.cos(perpAngle) * qiblaWidth;
+    final perpY = math.sin(perpAngle) * qiblaWidth;
+
     qiblaPath.moveTo(center.dx, center.dy);
-    qiblaPath.lineTo(
-      center.dx + qiblaWidth * math.cos(qiblaAngleRad + math.pi / 2),
-      center.dy + qiblaWidth * math.sin(qiblaAngleRad + math.pi / 2),
-    );
+    qiblaPath.lineTo(center.dx + perpX, center.dy + perpY);
     qiblaPath.lineTo(qiblaX, qiblaY);
-    qiblaPath.lineTo(
-      center.dx - qiblaWidth * math.cos(qiblaAngleRad + math.pi / 2),
-      center.dy - qiblaWidth * math.sin(qiblaAngleRad + math.pi / 2),
-    );
+    qiblaPath.lineTo(center.dx - perpX, center.dy - perpY);
     qiblaPath.close();
 
     canvas.drawPath(qiblaPath, qiblaPaint);

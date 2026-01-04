@@ -279,7 +279,7 @@ class HabitModel {
       case AppConstants.habitSalah:
         return 0xFF2196F3;
       case AppConstants.habitQuran:
-        return 0xFFFFD700;
+        return 0xFF4CAF50; // Green instead of yellow
       case AppConstants.habitDua:
         return 0xFF00BCD4;
       case AppConstants.habitTahajjud:

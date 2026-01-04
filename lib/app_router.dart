@@ -6,6 +6,8 @@ import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/auth_screen.dart';
 import 'presentation/screens/feed_page.dart';
 import 'presentation/screens/habits_page.dart';
+import 'presentation/screens/habits_list_page.dart';
+import 'presentation/screens/tasbih_counter_screen.dart';
 import 'presentation/screens/admin_page.dart';
 import 'presentation/screens/leaderboard_page.dart';
 import 'presentation/screens/mood_page.dart';
@@ -22,6 +24,12 @@ import 'presentation/screens/hijri_calendar_screen.dart';
 import 'presentation/screens/qibla_screen.dart';
 import 'presentation/screens/islamic_tools_screen.dart';
 import 'presentation/screens/followers_following_screen.dart';
+import 'presentation/screens/user_profile_preview_screen.dart';
+import 'presentation/screens/ai_chatbot_screen.dart';
+import 'presentation/screens/prayer_alarms_screen.dart';
+import 'presentation/screens/daily_deed_screen.dart';
+import 'presentation/screens/camera_screen.dart';
+import 'presentation/screens/add_member_screen.dart';
 import 'presentation/shell/ameen_shell.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
@@ -61,9 +69,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AuthScreen(),
       ),
       GoRoute(
+        path: '/camera',
+        name: 'camera',
+        builder: (context, state) => const CameraScreen(),
+      ),
+      GoRoute(
         path: '/create-deed',
         name: 'create-deed',
-        builder: (context, state) => const CreateDeedScreen(),
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return CreateDeedScreen(
+            initialMediaPath: extra?['mediaPath'] as String?,
+            initialMediaType: extra?['mediaType'] as String?,
+          );
+        },
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -86,14 +105,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 name: 'habits',
                 builder: (context, state) => const HabitsPage(),
               ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: <RouteBase>[
               GoRoute(
-                path: '/mood',
-                name: 'mood',
-                builder: (context, state) => const MoodPage(),
+                path: '/habits-list',
+                name: 'habits-list',
+                builder: (context, state) => const HabitsListPage(),
+              ),
+              GoRoute(
+                path: '/tasbih-counter',
+                name: 'tasbih-counter',
+                builder: (context, state) => const TasbihCounterScreen(),
               ),
             ],
           ),
@@ -187,6 +207,33 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const QiblaScreen(),
       ),
       GoRoute(
+        path: '/ai-chatbot',
+        name: 'ai-chatbot',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return AIChatbotScreen(
+            initialMessage: extra?['initialMessage'] as String?,
+            mediaPath: extra?['mediaPath'] as String?,
+            mediaType: extra?['mediaType'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/prayer-alarms',
+        name: 'prayer-alarms',
+        builder: (context, state) => const PrayerAlarmsScreen(),
+      ),
+      GoRoute(
+        path: '/daily-deed',
+        name: 'daily-deed',
+        builder: (context, state) => const DailyDeedScreen(),
+      ),
+      GoRoute(
+        path: '/mood',
+        name: 'mood',
+        builder: (context, state) => const MoodPage(),
+      ),
+      GoRoute(
         path: '/followers-following/:userId',
         name: 'followers-following',
         builder: (context, state) {
@@ -197,6 +244,19 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             initialTab: extra?['initialTab'] as int? ?? 0,
           );
         },
+      ),
+      GoRoute(
+        path: '/user-profile/:userId',
+        name: 'user-profile-preview',
+        builder: (context, state) {
+          final userId = state.pathParameters['userId']!;
+          return UserProfilePreviewScreen(userId: userId);
+        },
+      ),
+      GoRoute(
+        path: '/add-member',
+        name: 'add-member',
+        builder: (context, state) => const AddMemberScreen(),
       ),
     ],
     errorBuilder: (context, state) {

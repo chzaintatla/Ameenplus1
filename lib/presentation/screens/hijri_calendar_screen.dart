@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../utils/hijri_date_converter.dart';
 
 class HijriCalendarScreen extends StatefulWidget {
   const HijriCalendarScreen({super.key});
@@ -12,33 +13,12 @@ class _HijriCalendarScreenState extends State<HijriCalendarScreen> {
   DateTime _selectedDate = DateTime.now();
 
   Map<String, dynamic> _getHijriDate(DateTime gregorianDate) {
-    final daysSinceEpoch = gregorianDate.difference(DateTime(622, 7, 16)).inDays;
-    final hijriYear = (daysSinceEpoch / 354.37).floor() + 1;
-    final hijriDayOfYear = (daysSinceEpoch % 354.37).floor();
-
-    final hijriMonth = (hijriDayOfYear / 29.5).floor() + 1;
-    final hijriDay = (hijriDayOfYear % 29.5).floor() + 1;
-
-    final monthNames = [
-      'Muharram',
-      'Safar',
-      'Rabi\' al-awwal',
-      'Rabi\' al-thani',
-      'Jumada al-awwal',
-      'Jumada al-thani',
-      'Rajab',
-      'Sha\'ban',
-      'Ramadan',
-      'Shawwal',
-      'Dhu al-Qi\'dah',
-      'Dhu al-Hijjah',
-    ];
-
+    final hijriDate = HijriDateConverter.gregorianToHijri(gregorianDate);
     return {
-      'year': hijriYear.toInt(),
-      'month': hijriMonth.clamp(1, 12),
-      'day': hijriDay.clamp(1, 30),
-      'monthName': monthNames[(hijriMonth.clamp(1, 12) - 1)],
+      'year': hijriDate['year'],
+      'month': hijriDate['month'],
+      'day': hijriDate['day'],
+      'monthName': hijriDate['monthName'],
       'dayName': _getDayName(gregorianDate.weekday),
     };
   }

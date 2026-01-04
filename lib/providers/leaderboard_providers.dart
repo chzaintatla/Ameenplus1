@@ -16,6 +16,11 @@ final leaderboardRepositoryProvider = Provider<LeaderboardRepository>((ref) {
 
 final top5LeaderboardProvider = StreamProvider<List<LeaderboardUser>>((ref) {
   final repo = ref.watch(leaderboardRepositoryProvider);
-  return repo.watchTopUsers(limit: 5);
+  return repo.watchTopUsers(limit: 5).handleError((error, stackTrace) {
+    // Log error for debugging
+    print('Leaderboard error: $error');
+    // Return empty list on error instead of crashing
+    return <LeaderboardUser>[];
+  });
 });
 

@@ -10,25 +10,44 @@ class AmeenShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   static const _titles = <String>[
-    'Feed',
-    'Habits',
-    'Mood',
-    'Communities',
+    'Home',
+    'Tools Hub',
+    'Create Post',
+    'Community',
     'Profile',
   ];
 
   void _onTap(int index, StatefulNavigationShell navigationShell) {
-    navigationShell.goBranch(index, initialLocation: index == navigationShell.currentIndex);
+    // Map display index to actual branch index
+    // Display: 0=Home, 1=Tools, 2=Add, 3=Community, 4=Profile
+    // Branches: 0=Feed, 1=Tools, 2=Community, 3=Profile (no Add branch)
+    int actualIndex;
+    if (index < 2) {
+      actualIndex = index; // Home=0, Tools=1
+    } else if (index == 2) {
+      // Add button - handled separately
+      return;
+    } else if (index == 3) {
+      actualIndex = 2; // Community
+    } else {
+      actualIndex = 3; // Profile
+    }
+    
+    if (actualIndex >= 0 && actualIndex < 4) {
+      navigationShell.goBranch(actualIndex, initialLocation: actualIndex == navigationShell.currentIndex);
+    }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final index = navigationShell.currentIndex;
+    // Map actual index to display index (accounting for Add button)
+    final actualIndex = navigationShell.currentIndex;
+    final displayIndex = actualIndex >= 2 ? actualIndex + 1 : actualIndex;
     final unreadCountAsync = ref.watch(unreadCountProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[index]),
+        title: Text(_titles[actualIndex]),
         backgroundColor: Theme.of(context).brightness == Brightness.light
             ? Colors.white
             : Colors.green.shade900,
@@ -36,7 +55,7 @@ class AmeenShell extends ConsumerWidget {
             ? Colors.black
             : Colors.white,
         actions: <Widget>[
-          if (index == 0 || index == 3)
+          if (actualIndex == 0 || actualIndex == 3)
             Stack(
               children: [
                 IconButton(
@@ -80,37 +99,71 @@ class AmeenShell extends ConsumerWidget {
         ],
       ),
       body: navigationShell,
+      floatingActionButton: (actualIndex == 0 || actualIndex == 3) 
+          ? FloatingActionButton(
+              onPressed: () {
+                // Open AI Chatbot
+                context.push('/ai-chatbot');
+              },
+              child: const Icon(Icons.chat_bubble_outline),
+              tooltip: 'AI Islamic Assistant',
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (index) => _onTap(index, navigationShell),
+        selectedIndex: displayIndex,
+        onDestinationSelected: (index) {
+          if (index == 2) {
+            // Add button - open camera screen
+            context.push('/camera');
+          } else {
+            _onTap(index, navigationShell);
+          }
+        },
         indicatorColor: Theme.of(context).brightness == Brightness.light
             ? Colors.green.shade200
             : Colors.green.shade800,
         backgroundColor: Theme.of(context).brightness == Brightness.light
             ? Colors.white
             : Colors.green.shade900,
-        destinations: const <NavigationDestination>[
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome_rounded),
-            label: 'Feeds',
+        destinations: <NavigationDestination>[
+          const NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.build_outlined),
+            selectedIcon: Icon(Icons.build),
+            label: 'Tools',
           ),
           NavigationDestination(
-            icon: Icon(Icons.check_circle_outline_rounded),
-            selectedIcon: Icon(Icons.check_circle_rounded),
-            label: 'Habits',
+            icon: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+            selectedIcon: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+            label: '',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.self_improvement_outlined),
-            selectedIcon: Icon(Icons.self_improvement_rounded),
-            label: 'Mood',
-          ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.groups_outlined),
             selectedIcon: Icon(Icons.groups_rounded),
-            label: 'Groups',
+            label: 'Community',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
             selectedIcon: Icon(Icons.person_rounded),
             label: 'Profile',

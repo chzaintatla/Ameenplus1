@@ -34,36 +34,18 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Community'),
+        automaticallyImplyLeading: false,
+      ),
       body: Column(
         children: [
-          Card(
-            margin: EdgeInsets.zero,
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Communities',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 6),
-                  // Text(
-                  //   'Islamic groups, chat, events, and shared posts (Firebase real-time).',
-                  //   style: Theme.of(context).textTheme.bodyMedium,
-                  // ),
-                  // const SizedBox(height: 12),
-                  TabBar(
-                    controller: _tabController,
-                    tabs: const [
-                      Tab(text: 'My Communities'),
-                      Tab(text: 'Explore'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'My Communities'),
+              Tab(text: 'Explore'),
+            ],
           ),
           Expanded(
             child: TabBarView(
@@ -76,12 +58,31 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          _showCreateCommunityDialog(context, ref);
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Create Community'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+            onPressed: () {
+              context.push('/ai-chatbot');
+            },
+            heroTag: 'chatbot',
+            backgroundColor: Theme.of(context).colorScheme.secondary,
+            child: const Icon(Icons.chat_bubble_outline),
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton.extended(
+            onPressed: () {
+              _showCreateCommunityDialog(context, ref);
+            },
+            heroTag: 'create-community',
+            icon: const Icon(Icons.add),
+            label: const Text('Create Community'),
+            backgroundColor: Theme.of(context).brightness == Brightness.light
+                ? Colors.green
+                : Theme.of(context).colorScheme.primary,
+            foregroundColor: Colors.white,
+          ),
+        ],
       ),
     );
   }

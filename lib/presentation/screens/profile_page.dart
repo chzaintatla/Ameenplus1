@@ -62,22 +62,20 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         backgroundColor: Theme.of(context).brightness == Brightness.light
             ? Colors.white
             : Colors.green.shade900,
         foregroundColor: Theme.of(context).brightness == Brightness.light
             ? Colors.black
             : Colors.white,
-        actions: [
-          Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () => Scaffold.of(context).openEndDrawer(),
-            ),
-          ),
-        ],
       ),
-      endDrawer: Drawer(
+      drawer: Drawer(
         child: SafeArea(
           child: ListView(
             padding: EdgeInsets.zero,

@@ -198,7 +198,7 @@ class ChatRepository {
     }
   }
 
-  Stream<List<MessageModel>> getMessages(String chatId, {bool isCommunityChat = false}) {
+  Stream<List<MessageModel>> getMessages(String chatId, {bool isCommunityChat = false}) async* {
     CollectionReference messagesRef;
     
     if (isCommunityChat) {
@@ -214,38 +214,64 @@ class ChatRepository {
           .collection('messages');
     }
     
-    return messagesRef
-        .orderBy('timestamp', descending: true)
-        .limit(50)
-        .snapshots()
-        .handleError((error, stackTrace) {
-      // Log error for debugging
-      if (kDebugMode) {
-        debugPrint('Error in getMessages stream: $error');
-      }
-      // Re-throw so StreamProvider can catch it and show error UI
-      throw error;
-    })
-        .map((snapshot) {
-      final messages = snapshot.docs
-          .map((doc) {
-            try {
-              return MessageModel.fromFirestore(doc);
-            } catch (e) {
-              // Skip invalid documents
-              if (kDebugMode) {
-                debugPrint('Error parsing message document: $e');
+    try {
+      await for (final snapshot in messagesRef
+          .orderBy('timestamp', descending: true)
+          .limit(50)
+          .snapshots()) {
+        final messages = snapshot.docs
+            .map((doc) {
+              try {
+                return MessageModel.fromFirestore(doc);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('Error parsing message document: $e');
+                }
+                return null;
               }
-              return null;
-            }
-          })
-          .whereType<MessageModel>()
-          .toList();
-      
-      // Messages are already sorted by timestamp descending from query
-      // Reverse to show oldest first (for chat UI)
-      return messages.reversed.toList();
-    });
+            })
+            .whereType<MessageModel>()
+            .toList();
+        
+        messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        yield messages;
+      }
+    } catch (e) {
+      if (e.toString().contains('index') || e.toString().contains('FAILED_PRECONDITION')) {
+        try {
+          await for (final snapshot in messagesRef
+              .limit(50)
+              .snapshots()) {
+            final messages = snapshot.docs
+                .map((doc) {
+                  try {
+                    return MessageModel.fromFirestore(doc);
+                  } catch (e) {
+                    if (kDebugMode) {
+                      debugPrint('Error parsing message document: $e');
+                    }
+                    return null;
+                  }
+                })
+                .whereType<MessageModel>()
+                .toList();
+            
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            yield messages;
+          }
+        } catch (e2) {
+          if (kDebugMode) {
+            debugPrint('Error in getMessages fallback: $e2');
+          }
+          yield <MessageModel>[];
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('Error in getMessages stream: $e');
+        }
+        yield <MessageModel>[];
+      }
+    }
   }
 
   Stream<List<ChatModel>> getUserChats(String userId) {

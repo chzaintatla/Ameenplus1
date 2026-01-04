@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../utils/app_constants.dart';
 import '../../models/mood_model.dart';
-import 'leaderboard_page.dart';
-import 'islamic_tools_screen.dart';
 
 class MoodPage extends StatefulWidget {
   const MoodPage({super.key});
@@ -12,8 +9,7 @@ class MoodPage extends StatefulWidget {
   State<MoodPage> createState() => _MoodPageState();
 }
 
-class _MoodPageState extends State<MoodPage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _MoodPageState extends State<MoodPage> {
   String? selectedMood;
 
   final List<Map<String, dynamic>> moods = [
@@ -29,41 +25,12 @@ class _MoodPageState extends State<MoodPage> with SingleTickerProviderStateMixin
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        TabBar(
-          controller: _tabController,
-          labelColor: Colors.green.shade700,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.green.shade700,
-          tabs: const [
-            Tab(icon: Icon(Icons.self_improvement), text: 'Mood'),
-            Tab(icon: Icon(Icons.dashboard), text: 'Tools & Leaderboard'),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildMoodTab(),
-              _buildToolsTab(),
-            ],
-          ),
-        ),
-      ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Nafs Wellness Tracker'),
+      ),
+      body: _buildMoodTab(),
     );
   }
 
@@ -208,21 +175,6 @@ class _MoodPageState extends State<MoodPage> with SingleTickerProviderStateMixin
     );
   }
 
-  Widget _buildToolsTab() {
-    return CustomScrollView(
-      slivers: [
-        const SliverToBoxAdapter(
-          child: LeaderboardPage(),
-        ),
-        const SliverToBoxAdapter(
-          child: SizedBox(height: 16),
-        ),
-        const SliverToBoxAdapter(
-          child: IslamicToolsScreen(),
-        ),
-      ],
-    );
-  }
 
   Widget _buildMoodCard({
     required String mood,
@@ -283,7 +235,7 @@ class _MoodPageState extends State<MoodPage> with SingleTickerProviderStateMixin
     final Color contentColor;
     switch (suggestion.contentType) {
       case 'ayah':
-        contentColor = const Color(0xFFFFD700);
+        contentColor = const Color(0xFF4CAF50); // Green instead of yellow
       case 'hadith':
         contentColor = const Color(0xFF4CAF50);
       case 'dua':

@@ -6,6 +6,7 @@ import '../../providers/community_providers.dart';
 import '../../providers/chat_providers.dart';
 import '../../network/repositories/friends_repository.dart';
 import '../../models/community_model.dart';
+import 'add_member_screen.dart';
 
 final communityProvider = FutureProvider.family<CommunityModel?, String>((ref, communityId) async {
   final repository = ref.read(communityRepositoryProvider);
@@ -212,37 +213,74 @@ class CommunityDetailScreen extends ConsumerWidget {
                   data: (isMember) {
                     if (!isMember) return const SizedBox.shrink();
 
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Make Friends',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                    return Column(
+                      children: [
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Make Friends',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Connect with other members of this community',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    context.push('/communities/$communityId/members');
+                                  },
+                                  icon: const Icon(Icons.people),
+                                  label: const Text('View Members'),
+                                  style: ElevatedButton.styleFrom(
+                                    minimumSize: const Size(double.infinity, 48),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Connect with other members of this community',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                context.push('/communities/$communityId/members');
-                              },
-                              icon: const Icon(Icons.people),
-                              label: const Text('View Members'),
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size(double.infinity, 48),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Add Members',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Discover and follow users with public profiles',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    context.push('/add-member');
+                                  },
+                                  icon: const Icon(Icons.person_add),
+                                  label: const Text('Add Member'),
+                                  style: ElevatedButton.styleFrom(
+                                    minimumSize: const Size(double.infinity, 48),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     );
                   },
                   loading: () => const SizedBox.shrink(),

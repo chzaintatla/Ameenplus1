@@ -10,20 +10,24 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/chat_providers.dart';
+import '../../providers/community_providers.dart';
 import '../../models/chat_model.dart';
+import '../../models/community_model.dart';
 
-final messagesProvider = StreamProvider.family<List<MessageModel>, Map<String, dynamic>>((ref, params) async* {
+final communityProvider = FutureProvider.family<CommunityModel?, String>((ref, communityId) async {
+  final repository = ref.read(communityRepositoryProvider);
+  return await repository.getCommunity(communityId);
+});
+
+final messagesProvider = StreamProvider.family<List<MessageModel>, Map<String, dynamic>>((ref, params) {
   final repository = ref.read(chatRepositoryProvider);
   final chatId = params['chatId'] as String;
   final isCommunityChat = params['isCommunityChat'] as bool? ?? false;
   
   try {
-    await for (final messages in repository.getMessages(chatId, isCommunityChat: isCommunityChat)) {
-      yield messages;
-    }
-  } catch (e, stackTrace) {
-    // Re-throw error so StreamProvider can handle it
-    throw e;
+    return repository.getMessages(chatId, isCommunityChat: isCommunityChat);
+  } catch (e) {
+    return Stream.value(<MessageModel>[]);
   }
 });
 
@@ -225,6 +229,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       'isCommunityChat': widget.isCommunityChat,
     }));
     final currentUser = ref.watch(authStateProvider);
+    final communityAsync = widget.isCommunityChat
+        ? ref.watch(communityProvider(widget.chatId))
+        : null;
     
     // Debug logging
     if (kDebugMode) {
@@ -336,13 +343,90 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             if (!isMe)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 4),
-                                child: Text(
-                                  message.senderName,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Avatar
+                                    InkWell(
+                                      onTap: () {
+                                        context.push('/user-profile/${message.senderId}');
+                                      },
+                                      child: CircleAvatar(
+                                        radius: 14,
+                                        backgroundImage: message.senderPhotoUrl != null
+                                            ? CachedNetworkImageProvider(message.senderPhotoUrl!)
+                                            : null,
+                                        child: message.senderPhotoUrl == null
+                                            ? Text(
+                                                message.senderName.isNotEmpty
+                                                    ? message.senderName[0].toUpperCase()
+                                                    : '?',
+                                                style: const TextStyle(fontSize: 12),
+                                              )
+                                            : null,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Name with follow button
+                                    if (widget.isCommunityChat && communityAsync?.value != null)
+                                      Builder(
+                                        builder: (context) {
+                                          final community = communityAsync!.value!;
+                                          final isOwner = message.senderId == community.creatorId;
+                                          return InkWell(
+                                            onTap: () {
+                                              context.push('/user-profile/${message.senderId}');
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: isOwner ? Colors.green.shade700 : Colors.transparent,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (isOwner) ...[
+                                                    const Icon(
+                                                      Icons.star,
+                                                      size: 14,
+                                                      color: Colors.white,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                  ],
+                                                  Text(
+                                                    message.senderName,
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isOwner ? Colors.white : null,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      )
+                                    else
+                                      InkWell(
+                                        onTap: () {
+                                          context.push('/user-profile/${message.senderId}');
+                                        },
+                                        child: Text(
+                                          message.senderName,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            color: Theme.of(context).colorScheme.primary,
+                                            decoration: TextDecoration.underline,
+                                            decorationColor: Theme.of(context).colorScheme.primary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                             Flexible(

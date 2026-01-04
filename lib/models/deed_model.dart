@@ -13,6 +13,12 @@ class DeedModel {
   final String? reference;
   final String? category;
   final String? imageUrl;
+  final List<String> mediaUrls; // Support multiple media types
+  final String? mediaType; // 'image', 'video', 'pdf', 'audio', 'document'
+  final List<String> interests; // Post interest tags
+  final bool isValidated; // AI validation status
+  final String? validationReason;
+  final double? validationConfidence;
   final List<String> likes;
   final int commentsCount;
   final int sharesCount;
@@ -31,6 +37,12 @@ class DeedModel {
     this.reference,
     this.category,
     this.imageUrl,
+    this.mediaUrls = const [],
+    this.mediaType,
+    this.interests = const [],
+    this.isValidated = false,
+    this.validationReason,
+    this.validationConfidence,
     this.likes = const [],
     this.commentsCount = 0,
     this.sharesCount = 0,
@@ -53,6 +65,12 @@ class DeedModel {
       reference: data['reference'],
       category: data['category'],
       imageUrl: data['imageUrl'],
+      mediaUrls: List<String>.from(data['mediaUrls'] ?? []),
+      mediaType: data['mediaType'] as String?,
+      interests: List<String>.from(data['interests'] ?? []),
+      isValidated: data['isValidated'] as bool? ?? false,
+      validationReason: data['validationReason'] as String?,
+      validationConfidence: (data['validationConfidence'] as num?)?.toDouble(),
       likes: List<String>.from(data['likes'] ?? []),
       commentsCount: data['commentsCount'] ?? 0,
       sharesCount: data['sharesCount'] ?? 0,
@@ -92,6 +110,22 @@ class DeedModel {
     }
     if (imageUrl != null) {
       map['imageUrl'] = imageUrl;
+    }
+    if (mediaUrls.isNotEmpty) {
+      map['mediaUrls'] = mediaUrls;
+    }
+    if (mediaType != null) {
+      map['mediaType'] = mediaType;
+    }
+    if (interests.isNotEmpty) {
+      map['interests'] = interests;
+    }
+    map['isValidated'] = isValidated;
+    if (validationReason != null) {
+      map['validationReason'] = validationReason;
+    }
+    if (validationConfidence != null) {
+      map['validationConfidence'] = validationConfidence;
     }
     if (updatedAt != null) {
       map['updatedAt'] = Timestamp.fromDate(updatedAt!);
@@ -151,6 +185,12 @@ class DeedModel {
     String? reference,
     String? category,
     String? imageUrl,
+    List<String>? mediaUrls,
+    String? mediaType,
+    List<String>? interests,
+    bool? isValidated,
+    String? validationReason,
+    double? validationConfidence,
     List<String>? likes,
     int? commentsCount,
     int? sharesCount,
@@ -168,6 +208,12 @@ class DeedModel {
       reference: reference ?? this.reference,
       category: category ?? this.category,
       imageUrl: imageUrl ?? this.imageUrl,
+      mediaUrls: mediaUrls ?? this.mediaUrls,
+      mediaType: mediaType ?? this.mediaType,
+      interests: interests ?? this.interests,
+      isValidated: isValidated ?? this.isValidated,
+      validationReason: validationReason ?? this.validationReason,
+      validationConfidence: validationConfidence ?? this.validationConfidence,
       likes: likes ?? this.likes,
       commentsCount: commentsCount ?? this.commentsCount,
       sharesCount: sharesCount ?? this.sharesCount,

@@ -14,7 +14,7 @@ class IslamicToolsScreen extends StatelessWidget {
         Padding(
           padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
           child: Text(
-            'Islamic Tools',
+            'Ameen Islamic Tools',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -28,8 +28,8 @@ class IslamicToolsScreen extends StatelessWidget {
           _buildToolCard(
             context,
             icon: Icons.explore_outlined,
-            title: 'Qibla Direction',
-            subtitle: 'Find the direction to Mecca',
+            title: 'Qibla Compass Ameen',
+            subtitle: 'Find the precise direction to Kaaba in Mecca',
             color: Colors.blue,
             onTap: () => context.push('/qibla'),
             mediaQuery: mediaQuery,
@@ -38,8 +38,8 @@ class IslamicToolsScreen extends StatelessWidget {
           _buildToolCard(
             context,
             icon: Icons.schedule_outlined,
-            title: 'Prayer Times',
-            subtitle: 'View daily prayer schedules',
+            title: 'Salah Times Ameen',
+            subtitle: 'Accurate prayer times for your location',
             color: Colors.green,
             onTap: () => context.push('/prayer-times'),
             mediaQuery: mediaQuery,
@@ -48,14 +48,14 @@ class IslamicToolsScreen extends StatelessWidget {
           _buildToolCard(
             context,
             icon: Icons.calendar_month_outlined,
-            title: 'Hijri Calendar',
-            subtitle: 'Islamic calendar and important dates',
+            title: 'Hijri Calendar Ameen',
+            subtitle: 'Islamic calendar with important dates and events',
             color: Colors.orange,
             onTap: () => context.push('/hijri-calendar'),
             mediaQuery: mediaQuery,
           ),
-            ],
-          ),
+          ],
+        ),
       ],
     );
   }
@@ -109,7 +109,7 @@ class IslamicToolsScreen extends StatelessWidget {
                       subtitle,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                      ),
                     ),
                   ],
                 ),
