@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,8 +36,8 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
   
   File? _selectedImage;
   File? _selectedVideo;
-  PlatformFile? _selectedFile; // For PDFs, Audio, Word, Excel
-  String? _selectedMediaType; // 'image', 'video', 'pdf', 'audio', 'document'
+  PlatformFile? _selectedFile;
+  String? _selectedMediaType;
   List<String> _selectedInterests = [];
   bool _isLoading = false;
   bool _isValidating = false;
@@ -258,9 +258,9 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
       }
 
       // Check moderation status
-      final canPost = await _moderationService.canUserPost(user.uid);
+      final canPost = await _moderationService.canUserPost(user.id);
       if (!canPost) {
-        final status = await _moderationService.getModerationStatus(user.uid);
+        final status = await _moderationService.getModerationStatus(user.id);
         if (mounted) {
           setState(() {
             _isValidating = false;
@@ -299,7 +299,7 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
       if (!validationResult.isValid) {
         // Add negative point
         final moderationResult = await _moderationService.addNegativePoint(
-          userId: user.uid,
+          userId: user.id,
           reason: validationResult.reason,
         );
 
@@ -352,16 +352,16 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
 
       final repository = ref.read(deedsRepositoryProvider);
       await repository.createDeed(
-        userId: user.uid,
-        userName: user.displayName ?? 'User',
-        userPhotoUrl: user.photoURL,
+        userId: user.id,
+        userName: user.userMetadata?['display_name'] as String? ?? 'User',
+        userPhotoUrl: user.userMetadata?['avatar_url'] as String?,
         deedType: AppConstants.deedGeneral,
         content: _contentController.text.trim().isEmpty 
-            ? (_selectedMediaType == 'image' ? '📷 Image' 
-               : _selectedMediaType == 'video' ? '🎥 Video'
-               : _selectedMediaType == 'pdf' ? '📄 PDF'
-               : _selectedMediaType == 'audio' ? '🎵 Audio'
-               : '📎 Document')
+            ? (_selectedMediaType == 'image' ? 'ðŸ“· Image' 
+               : _selectedMediaType == 'video' ? 'ðŸŽ¥ Video'
+               : _selectedMediaType == 'pdf' ? 'ðŸ“„ PDF'
+               : _selectedMediaType == 'audio' ? 'ðŸŽµ Audio'
+               : 'ðŸ“Ž Document')
             : _contentController.text.trim(),
         arabicText: null,
         translation: null,
@@ -419,7 +419,7 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: const Text('Create Post'),
+        title: const Text(''),
         actions: [
           if (_isValidating)
             Padding(
@@ -472,16 +472,16 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
               children: [
                 CircleAvatar(
                   radius: mediaQuery.size.width * 0.06,
-                  backgroundImage: user?.photoURL != null
-                      ? NetworkImage(user!.photoURL!)
+                  backgroundImage: user?.userMetadata?['avatar_url'] != null
+                      ? NetworkImage(user!.userMetadata!['avatar_url'] as String)
                       : null,
-                  child: user?.photoURL == null
+                  child: user?.userMetadata?['avatar_url'] == null
                       ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
                       : null,
                 ),
                 SizedBox(width: mediaQuery.size.width * 0.03),
                 Text(
-                  user?.displayName ?? 'User',
+                  user?.userMetadata?['display_name'] as String? ?? 'User',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -565,7 +565,7 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
                             : Container(
                                 height: 200,
                                 width: double.infinity,
-                                color: Theme.of(context).colorScheme.surfaceVariant,
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
@@ -633,7 +633,16 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
                     children: interests.map((interest) {
                       final isSelected = _selectedInterests.contains(interest);
                       return FilterChip(
-                        label: Text(interest),
+                        label: Text(
+                          interest,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : (Theme.of(context).brightness == Brightness.light
+                                    ? Colors.black
+                                    : null),
+                          ),
+                        ),
                         selected: isSelected,
                         onSelected: (selected) {
                           setState(() {

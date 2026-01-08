@@ -1,117 +1,47 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../utils/app_constants.dart';
 import '../../models/leaderboard_user.dart';
 
-abstract class LeaderboardRepository {
-  Stream<List<LeaderboardUser>> watchTopUsers({int limit});
-}
+class LeaderboardRepository {
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-class FirebaseLeaderboardRepository implements LeaderboardRepository {
-  FirebaseLeaderboardRepository(this._firestore);
+  Future<List<LeaderboardUser>> getGlobalLeaderboard({int limit = 50}) async {
+    final data = await _supabase
+        .from(AppConstants.collectionUsers)
+        .select()
+        .order('points', ascending: false)
+        .limit(limit);
 
-  final FirebaseFirestore _firestore;
-
-  @override
-  Stream<List<LeaderboardUser>> watchTopUsers({int limit = 5}) async* {
-    // Try leaderboard_public first
-    try {
-      await for (final snapshot in _firestore
-          .collection('leaderboard_public')
-          .orderBy('points', descending: true)
-          .limit(limit)
-          .snapshots()) {
-        if (snapshot.docs.isNotEmpty) {
-          final users = snapshot.docs
-              .map((d) => LeaderboardUser.fromMap(d.id, d.data()))
-              .where((u) => u.points > 0) // Only show users with points
-              .toList();
-          if (users.isNotEmpty) {
-            yield users;
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      // Continue to fallback
-    }
-
-    // Fallback to users collection
-    yield* _getUsersFallback(limit);
+    return data.map((item) => LeaderboardUser.fromMap(item)).toList();
   }
 
-  Stream<List<LeaderboardUser>> _getUsersFallback(int limit) async* {
-    try {
-      // Try with isProfilePublic filter and orderBy
-      try {
-        await for (final snapshot in _firestore
-            .collection('users')
-            .where('isProfilePublic', isEqualTo: true)
-            .orderBy('xp', descending: true)
-            .limit(limit)
-            .snapshots()) {
-          final users = snapshot.docs.map((d) {
-            final data = d.data();
-            final xp = (data['xp'] as num?)?.toInt() ?? 0;
-            return LeaderboardUser(
-              uid: d.id,
-              displayName: data['displayName'] as String? ?? 
-                          data['name'] as String? ?? 
-                          'User',
-              photoUrl: data['profilePicture'] as String? ?? 
-                       data['photoUrl'] as String?,
-              points: xp,
-            );
-          }).where((u) => u.points > 0).toList();
-          
-          if (users.isNotEmpty) {
-            yield users;
-            return;
-          }
-        }
-      } catch (e) {
-        // Index might not exist, try without orderBy
-      }
+  Future<List<LeaderboardUser>> getRegionalLeaderboard(String region, {int limit = 50}) async {
+    final data = await _supabase
+        .from(AppConstants.collectionUsers)
+        .select()
+        .eq('region', region)
+        .order('points', ascending: false)
+        .limit(limit);
 
-      // Get all users and sort in memory
-      try {
-        await for (final snapshot in _firestore
-            .collection('users')
-            .limit(50) // Get more to ensure we have enough with points
-            .snapshots()) {
-          final users = snapshot.docs.map((d) {
-            final data = d.data();
-            final xp = (data['xp'] as num?)?.toInt() ?? 0;
-            return LeaderboardUser(
-              uid: d.id,
-              displayName: data['displayName'] as String? ?? 
-                          data['name'] as String? ?? 
-                          'User',
-              photoUrl: data['profilePicture'] as String? ?? 
-                       data['photoUrl'] as String?,
-              points: xp,
-            );
-          })
-          .where((u) => u.points > 0) // Only users with points
-          .toList();
-          
-          // Sort by points descending
-          users.sort((a, b) => b.points.compareTo(a.points));
-          
-          // Take top limit
-          yield users.take(limit).toList();
-        }
-      } catch (e) {
-        // If all fails, return empty list
-        yield <LeaderboardUser>[];
-      }
-    } catch (e) {
-      yield <LeaderboardUser>[];
-    }
+    return data.map((item) => LeaderboardUser.fromMap(item)).toList();
   }
-}
 
-class DisabledLeaderboardRepository implements LeaderboardRepository {
-  @override
-  Stream<List<LeaderboardUser>> watchTopUsers({int limit = 5}) {
-    return Stream.value(<LeaderboardUser>[]);
+  Future<int> getUserRank(String userId) async {
+    final userData = await _supabase
+        .from(AppConstants.collectionUsers)
+        .select('points')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (userData == null) return 0;
+
+    final userPoints = userData['points'] ?? 0;
+
+    final higherRanked = await _supabase
+        .from(AppConstants.collectionUsers)
+        .select()
+        .gt('points', userPoints);
+
+    return higherRanked.length + 1;
   }
 }

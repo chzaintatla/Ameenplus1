@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'providers/auth_providers.dart';
@@ -8,7 +8,6 @@ import 'presentation/screens/feed_page.dart';
 import 'presentation/screens/habits_page.dart';
 import 'presentation/screens/habits_list_page.dart';
 import 'presentation/screens/tasbih_counter_screen.dart';
-import 'presentation/screens/admin_page.dart';
 import 'presentation/screens/leaderboard_page.dart';
 import 'presentation/screens/mood_page.dart';
 import 'presentation/screens/profile_page.dart';
@@ -142,11 +141,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         name: 'leaderboard',
         builder: (context, state) => const LeaderboardPage(),
       ),
-      GoRoute(
-        path: '/admin',
-        name: 'admin',
-        builder: (context, state) => const AdminPage(),
-      ),
+      // GoRoute(
+      //   path: '/admin',
+      //   name: 'admin',
+      //   builder: (context, state) => const AdminPage(),
+      // ),
       GoRoute(
         path: '/profile/edit',
         name: 'edit-profile',

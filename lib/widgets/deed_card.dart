@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -137,13 +137,13 @@ class DeedCard extends ConsumerWidget {
                         try {
                           if (isFollowing) {
                             await repository.unfollowUser(
-                              followerId: currentUserId!,
-                              followingId: deed.userId,
+                              currentUserId!,
+                              deed.userId,
                             );
                           } else {
                             await repository.followUser(
-                              followerId: currentUserId!,
-                              followingId: deed.userId,
+                              currentUserId!,
+                              deed.userId,
                             );
                           }
                         } catch (e) {
@@ -230,29 +230,112 @@ class DeedCard extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
               child: Text(
                 deed.content,
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ),
-          if (deed.translation != null) ...[
+          if (deed.imageUrl != null && deed.imageUrl!.isNotEmpty) ...[
+            SizedBox(height: mediaQuery.size.height * 0.01),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: deed.imageUrl!,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    height: 200,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: 200,
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Theme.of(context).colorScheme.error,
+                          size: 48,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Could not load image',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (deed.mediaUrls.isNotEmpty) ...[
+            SizedBox(height: mediaQuery.size.height * 0.01),
+            SizedBox(
+              height: 200,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
+                itemCount: deed.mediaUrls.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: deed.mediaUrls[index],
+                        width: 200,
+                        height: 200,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          width: 200,
+                          height: 200,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          width: 200,
+                          height: 200,
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: Icon(
+                            Icons.error,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (deed.translation != null) ...{
             SizedBox(height: mediaQuery.size.height * 0.01),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
               child: Container(
                 padding: EdgeInsets.all(mediaQuery.size.width * 0.03),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.5),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   deed.translation!,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontStyle: FontStyle.italic,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
               ),
             ),
-          ],
+          },
           if (deed.interests.isNotEmpty) ...[
             SizedBox(height: mediaQuery.size.height * 0.01),
             Padding(
@@ -264,10 +347,15 @@ class DeedCard extends ConsumerWidget {
                   return Chip(
                     label: Text(
                       interest,
-                      style: TextStyle(fontSize: 12),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? Colors.black
+                            : Colors.white,
+                      ),
                     ),
                     backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   );
@@ -544,7 +632,7 @@ class DeedCard extends ConsumerWidget {
                     itemBuilder: (context, index) {
                       final comment = comments[index];
                       final isCommentLiked = currentUser != null &&
-                          comment.isLikedBy(currentUser.uid);
+                          comment.isLikedBy(currentUser.id);
 
                       return Padding(
                         padding: EdgeInsets.only(bottom: mediaQuery.size.height * 0.015),
@@ -570,7 +658,7 @@ class DeedCard extends ConsumerWidget {
                                     decoration: BoxDecoration(
                                       color: Theme.of(context)
                                           .colorScheme
-                                          .surfaceVariant
+                                          .surfaceContainerHighest
                                           .withValues(alpha: 0.5),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -612,9 +700,8 @@ class DeedCard extends ConsumerWidget {
                                             final repository =
                                                 ref.read(commentsRepositoryProvider);
                                             await repository.likeComment(
-                                              deedId,
                                               comment.id,
-                                              currentUser.uid,
+                                              currentUser.id,
                                             );
                                           }
                                         },
@@ -698,9 +785,9 @@ class DeedCard extends ConsumerWidget {
                         final repository = ref.read(commentsRepositoryProvider);
                         await repository.addComment(
                           deedId: deedId,
-                          userId: currentUser.uid,
-                          userName: currentUser.displayName ?? 'User',
-                          userPhotoUrl: currentUser.photoURL,
+                          userId: currentUser.id,
+                          userName: currentUser.userMetadata?['display_name'] ?? 'User',
+                          userPhotoUrl: currentUser.userMetadata?['avatar_url'],
                           content: commentController.text.trim(),
                         );
                         commentController.clear();

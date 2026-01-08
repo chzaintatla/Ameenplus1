@@ -12,9 +12,9 @@ class AIChatbotScreen extends ConsumerStatefulWidget {
   final String? initialMessage;
   final String? mediaPath;
   final String? mediaType;
-  
+
   const AIChatbotScreen({
-    super.key, 
+    super.key,
     this.initialMessage,
     this.mediaPath,
     this.mediaType,
@@ -29,7 +29,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   final GroqApiService _groqService = GroqApiService();
-  final AIContentValidationService _validationService = AIContentValidationService();
+  final AIContentValidationService _validationService =
+      AIContentValidationService();
   final ChatDatabaseService _chatDb = ChatDatabaseService();
   final ImagePicker _imagePicker = ImagePicker();
   bool _isLoading = false;
@@ -47,7 +48,7 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
     setState(() => _isLoadingHistory = true);
     try {
       final savedMessages = await _chatDb.getRecentMessages(limit: 100);
-      
+
       if (savedMessages.isEmpty) {
         _addWelcomeMessage();
       } else {
@@ -61,9 +62,12 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
       if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 500));
         _messageController.text = widget.initialMessage!;
-        if (widget.mediaPath != null) {
-          _selectedMediaFile = File(widget.mediaPath!);
-          _selectedMediaType = widget.mediaType ?? 'file';
+        if (widget.mediaPath != null && widget.mediaPath!.isNotEmpty) {
+          final mediaFile = File(widget.mediaPath!);
+          if (await mediaFile.exists()) {
+            _selectedMediaFile = mediaFile;
+            _selectedMediaType = widget.mediaType ?? 'file';
+          }
         }
         await _sendMessage();
       }
@@ -79,11 +83,12 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
   void _addWelcomeMessage() {
     if (_messages.isEmpty) {
       _messages.add(ChatMessage(
-        text: 'Assalamu Alaikum! I\'m your Islamic AI assistant. I can help you with:\n\n'
-            '• Islamic questions and guidance\n'
-            '• Quran and Hadith references\n'
-            '• Daily motivation and reminders\n'
-            '• App feature explanations\n\n'
+        text:
+            'Assalamu Alaikum! I\'m your Islamic AI assistant. I can help you with:\n\n'
+            'â€¢ Islamic questions and guidance\n'
+            'â€¢ Quran and Hadith references\n'
+            'â€¢ Daily motivation and reminders\n'
+            'â€¢ App feature explanations\n\n'
             'Please note: I only discuss Islamic topics. How can I help you today?',
         isUser: false,
         timestamp: DateTime.now(),
@@ -98,7 +103,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
     // Build message text with media info
     String messageText = text;
     if (_selectedMediaFile != null) {
-      final mediaInfo = 'I have attached a ${_selectedMediaType ?? 'file'} for validation/analysis.';
+      final mediaInfo =
+          'I have attached a ${_selectedMediaType ?? 'file'} for validation/analysis.';
       messageText = text.isEmpty ? mediaInfo : '$text\n\n$mediaInfo';
     }
 
@@ -109,7 +115,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Please ask only about Islamic topics. ${validation.reason}'),
+              content: Text(
+                  'Please ask only about Islamic topics. ${validation.reason}'),
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
@@ -118,10 +125,36 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
       }
     }
 
+    // Capture media info before clearing state
+    String? currentMediaPath;
+    String? currentMediaType;
+
+    if (_selectedMediaFile != null) {
+      currentMediaPath = _selectedMediaFile!.path;
+      currentMediaType = _selectedMediaType;
+    } else if (widget.mediaPath != null &&
+        widget.mediaPath!.isNotEmpty &&
+        text == widget.initialMessage) {
+      // Use widget media path only if it's the initial message
+      try {
+        final mediaFile = File(widget.mediaPath!);
+        if (await mediaFile.exists()) {
+          currentMediaPath = widget.mediaPath;
+          currentMediaType = widget.mediaType ?? 'file';
+        }
+      } catch (e) {
+        // File doesn't exist or path is invalid, ignore
+        currentMediaPath = null;
+        currentMediaType = null;
+      }
+    }
+
     final userMessage = ChatMessage(
       text: messageText,
       isUser: true,
       timestamp: DateTime.now(),
+      mediaPath: currentMediaPath,
+      mediaType: currentMediaType,
     );
 
     // Insert message and get the ID
@@ -131,6 +164,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
       text: messageText,
       isUser: true,
       timestamp: userMessage.timestamp,
+      mediaPath: userMessage.mediaPath,
+      mediaType: userMessage.mediaType,
     );
 
     setState(() {
@@ -155,22 +190,24 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
 
       // Detect language
       final detectedLanguage = _detectLanguage(messageText);
-      final languageInstruction = detectedLanguage == 'urdu' 
+      final languageInstruction = detectedLanguage == 'urdu'
           ? ' Please respond in Urdu (اردو).'
           : ' Please respond in English.';
-      
+
       final messageWithLanguage = messageText + languageInstruction;
 
       // Get user profile for personalization
       final profileAsync = ref.read(currentUserProfileProvider);
       final userProfile = profileAsync.value;
-      
+
       final response = await _groqService.chat(
         message: messageWithLanguage,
         conversationHistory: conversationHistory,
         profession: userProfile?.profession,
         interests: userProfile?.interests,
         language: detectedLanguage,
+        mediaPath: currentMediaPath,
+        mediaType: currentMediaType,
       );
 
       // Insert assistant message and get the ID
@@ -200,7 +237,7 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
         isUser: false,
         timestamp: DateTime.now(),
       );
-      
+
       // Insert error message and get the ID
       final errorMessageId = await _chatDb.insertMessage(errorMessage);
       final errorMessageWithId = ChatMessage(
@@ -209,7 +246,7 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
         isUser: false,
         timestamp: errorMessage.timestamp,
       );
-      
+
       if (mounted) {
         setState(() {
           _messages.add(errorMessageWithId);
@@ -222,7 +259,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
 
   String _detectLanguage(String text) {
     // Simple Urdu detection - check for Urdu characters
-    final urduPattern = RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]');
+    final urduPattern = RegExp(
+        r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]');
     if (urduPattern.hasMatch(text)) {
       return 'urdu';
     }
@@ -354,7 +392,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
                   children: [
                     Icon(Icons.delete_outline, color: Colors.red),
                     SizedBox(width: 8),
-                    Text('Delete All Messages', style: TextStyle(color: Colors.red)),
+                    Text('Delete All Messages',
+                        style: TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -384,110 +423,117 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
                     },
                   ),
                 ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_selectedMediaFile != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _selectedMediaType == 'image'
-                                ? Icons.image
-                                : _selectedMediaType == 'video'
-                                    ? Icons.video_library
-                                    : Icons.audiotrack,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _selectedMediaFile!.path.split('/').last,
-                              style: Theme.of(context).textTheme.bodySmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () {
-                              setState(() {
-                                _selectedMediaFile = null;
-                                _selectedMediaType = null;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Ask about Islamic topics...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    maxLines: null,
-                    textCapitalization: TextCapitalization.sentences,
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _isLoading ? null : _pickMedia,
-                  icon: const Icon(Icons.attach_file),
-                  tooltip: 'Attach Media',
-                ),
-                IconButton(
-                  onPressed: _isLoading ? null : _sendMessage,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.all(12),
-                  ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, -2),
                       ),
                     ],
                   ),
-                ],
-              ),
+                  child: SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_selectedMediaFile != null) ...[
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _selectedMediaType == 'image'
+                                      ? Icons.image
+                                      : _selectedMediaType == 'video'
+                                          ? Icons.video_library
+                                          : Icons.audiotrack,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _selectedMediaFile!.path.split('/').last,
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18),
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedMediaFile = null;
+                                      _selectedMediaType = null;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _messageController,
+                                decoration: InputDecoration(
+                                  hintText: 'Ask about Islamic topics...',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                maxLines: null,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                onSubmitted: (_) => _sendMessage(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: _isLoading ? null : _pickMedia,
+                              icon: const Icon(Icons.attach_file),
+                              tooltip: 'Attach Media',
+                            ),
+                            IconButton(
+                              onPressed: _isLoading ? null : _sendMessage,
+                              icon: _isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.send),
+                              style: IconButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -497,7 +543,7 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
       setState(() {
         _messages.removeWhere((m) => m.id == messageId);
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -560,7 +606,7 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
         _messages.clear();
         _addWelcomeMessage();
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -596,25 +642,26 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
-              Text('• Islamic questions and guidance'),
-              Text('• Quran and Hadith references'),
-              Text('• Daily motivation'),
-              Text('• App feature explanations'),
+              Text('â€¢ Islamic questions and guidance'),
+              Text('â€¢ Quran and Hadith references'),
+              Text('â€¢ Daily motivation'),
+              Text('â€¢ App feature explanations'),
               SizedBox(height: 16),
               Text(
                 'Important:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
-              Text('This chatbot only discusses Islamic topics. Non-Islamic questions will be redirected.'),
+              Text(
+                  'This chatbot only discusses Islamic topics. Non-Islamic questions will be redirected.'),
               SizedBox(height: 16),
               Text(
                 'Tips:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
-              Text('• Long press on any message to delete it'),
-              Text('• Use the menu to delete all messages'),
+              Text('â€¢ Long press on any message to delete it'),
+              Text('â€¢ Use the menu to delete all messages'),
             ],
           ),
         ),
@@ -628,7 +675,6 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
     );
   }
 }
-
 
 class _ChatBubble extends StatelessWidget {
   final ChatMessage message;
@@ -668,20 +714,74 @@ class _ChatBubble extends StatelessWidget {
                     }
                   : null,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: message.isUser
                       ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.surfaceVariant,
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Text(
-                  message.text,
-                  style: TextStyle(
-                    color: message.isUser
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.mediaPath != null &&
+                        message.mediaPath!.isNotEmpty) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: message.mediaType == 'image'
+                            ? Image.file(
+                                File(message.mediaPath!),
+                                width: 200,
+                                height: 150,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
+                                  width: 200,
+                                  height: 150,
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.broken_image,
+                                      color: Colors.grey),
+                                ),
+                              )
+                            : Container(
+                                width: 200,
+                                height: 100,
+                                color: Colors.black26,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      message.mediaType == 'video'
+                                          ? Icons.video_library
+                                          : Icons.audiotrack,
+                                      color: Colors.white70,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      message.mediaPath!.split('/').last,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      message.text,
+                      style: TextStyle(
+                        color: message.isUser
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -754,7 +854,7 @@ class _TypingIndicator extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Row(
@@ -775,4 +875,3 @@ class _TypingIndicator extends StatelessWidget {
     );
   }
 }
-

@@ -1,11 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
 import '../../theme/ameen_theme.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
-import 'phone_auth_screen.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
@@ -88,13 +87,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   void _continueAsGuest() {
     ref.read(guestModeProvider.notifier).state = true;
     context.go('/feed');
-  }
-
-  void _navigateToPhoneAuth() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const PhoneAuthScreen()),
-    );
   }
 
   @override
@@ -180,15 +172,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _navigateToPhoneAuth,
-                icon: const Icon(Icons.phone_rounded),
-                label: const Text('Continue with Phone'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-              const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _signInWithGoogle,
                 icon: const Icon(Icons.g_mobiledata, size: 28),

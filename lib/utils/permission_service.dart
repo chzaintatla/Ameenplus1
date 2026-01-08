@@ -1,4 +1,4 @@
-import 'package:permission_handler/permission_handler.dart' as ph;
+﻿import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_constants.dart';
 

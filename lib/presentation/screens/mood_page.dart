@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../utils/app_constants.dart';
 import '../../models/mood_model.dart';
+import '../../utils/mood_suggestions_data.dart';
 
 class MoodPage extends StatefulWidget {
   const MoodPage({super.key});
@@ -13,15 +14,15 @@ class _MoodPageState extends State<MoodPage> {
   String? selectedMood;
 
   final List<Map<String, dynamic>> moods = [
-    {'mood': AppConstants.moodAngry, 'label': 'Angry', 'emoji': '😠', 'color': const Color(0xFFD32F2F)},
-    {'mood': AppConstants.moodSad, 'label': 'Sad', 'emoji': '😢', 'color': const Color(0xFF1976D2)},
-    {'mood': AppConstants.moodHappy, 'label': 'Happy', 'emoji': '😊', 'color': const Color(0xFFFFA726)},
-    {'mood': AppConstants.moodStressed, 'label': 'Stressed', 'emoji': '😰', 'color': const Color(0xFF7B1FA2)},
-    {'mood': AppConstants.moodDemotivated, 'label': 'Demotivated', 'emoji': '😔', 'color': const Color(0xFF616161)},
-    {'mood': AppConstants.moodLonely, 'label': 'Lonely', 'emoji': '😞', 'color': const Color(0xFF5E35B1)},
-    {'mood': AppConstants.moodRepent, 'label': 'Want to Repent', 'emoji': '😌', 'color': const Color(0xFF4CAF50)},
-    {'mood': AppConstants.moodLearn, 'label': 'Want to Learn', 'emoji': '🤓', 'color': const Color(0xFF00ACC1)},
-    {'mood': AppConstants.moodPeace, 'label': 'Seeking Peace', 'emoji': '😇', 'color': const Color(0xFF66BB6A)},
+    {'mood': AppConstants.moodAngry, 'label': 'Angry', 'emoji': 'ðŸ˜ ', 'color': const Color(0xFFD32F2F)},
+    {'mood': AppConstants.moodSad, 'label': 'Sad', 'emoji': 'ðŸ˜¢', 'color': const Color(0xFF1976D2)},
+    {'mood': AppConstants.moodHappy, 'label': 'Happy', 'emoji': 'ðŸ˜Š', 'color': const Color(0xFFFFA726)},
+    {'mood': AppConstants.moodStressed, 'label': 'Stressed', 'emoji': 'ðŸ˜°', 'color': const Color(0xFF7B1FA2)},
+    {'mood': AppConstants.moodDemotivated, 'label': 'Demotivated', 'emoji': 'ðŸ˜”', 'color': const Color(0xFF616161)},
+    {'mood': AppConstants.moodLonely, 'label': 'Lonely', 'emoji': 'ðŸ˜ž', 'color': const Color(0xFF5E35B1)},
+    {'mood': AppConstants.moodRepent, 'label': 'Want to Repent', 'emoji': 'ðŸ˜Œ', 'color': const Color(0xFF4CAF50)},
+    {'mood': AppConstants.moodLearn, 'label': 'Want to Learn', 'emoji': 'ðŸ¤“', 'color': const Color(0xFF00ACC1)},
+    {'mood': AppConstants.moodPeace, 'label': 'Seeking Peace', 'emoji': 'ðŸ˜‡', 'color': const Color(0xFF66BB6A)},
   ];
 
   @override
@@ -290,7 +291,7 @@ class _MoodPageState extends State<MoodPage> {
             if (suggestion.reference != null) ...[
               const SizedBox(height: 8),
               Text(
-                '— ${suggestion.reference}',
+                'â€” ${suggestion.reference}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontStyle: FontStyle.italic,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,

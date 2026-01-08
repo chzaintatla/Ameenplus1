@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_constants.dart';
 import 'app_database.dart';
 import '../models/user_model.dart';
 
 class XPService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   final AppDatabase _localDb = AppDatabase.instance;
 
   Future<void> awardXP({
@@ -14,43 +14,43 @@ class XPService {
     String? description,
   }) async {
     try {
-      final userRef = _firestore.collection(AppConstants.collectionUsers).doc(userId);
+      // Get current user data
+      final userData = await _supabase
+          .from(AppConstants.collectionUsers)
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
 
-      await _firestore.runTransaction((transaction) async {
-        final userDoc = await transaction.get(userRef);
-        if (!userDoc.exists) return;
+      if (userData == null) return;
 
-        final data = userDoc.data()!;
-        final currentXP = (data['xp'] ?? 0) as int;
-        final newXP = currentXP + xpAmount;
-        final newLevel = UserModel.calculateLevel(newXP);
+      final currentXP = (userData['xp'] ?? 0) as int;
+      final newXP = currentXP + xpAmount;
+      final newLevel = UserModel.calculateLevel(newXP);
 
-        final badges = List<String>.from(data['badges'] ?? []);
-        final newBadges = _checkBadgeUnlocks(newXP, newLevel, actionType, badges);
+      final badges = List<String>.from(userData['badges'] ?? []);
+      final newBadges = _checkBadgeUnlocks(newXP, newLevel, actionType, badges);
 
-        transaction.update(userRef, {
-          'xp': newXP,
-          'level': newLevel,
-          'badges': newBadges,
-          'lastActive': FieldValue.serverTimestamp(),
-        });
+      // Update user XP and level
+      await _supabase
+          .from(AppConstants.collectionUsers)
+          .update({
+            'xp': newXP,
+            'level': newLevel,
+            'badges': newBadges,
+            'last_active': DateTime.now().toIso8601String(),
+            'points': newXP,
+          })
+          .eq('id', userId);
 
-        if (data['isProfilePublic'] == true) {
-          await _updateLeaderboard(userId, newXP, data['displayName'] ?? 'User', data['photoUrl'] ?? data['profilePicture']);
-        }
-      });
-
-      final userDoc = await userRef.get();
-      if (userDoc.exists) {
-        final data = userDoc.data()!;
-        await _localDb.updateUserXP(
-          userId,
-          data['xp'] ?? 0,
-          data['level'] ?? 1,
-          (data['badges'] as List).join(','),
-        );
-      }
+      // Update local database
+      await _localDb.updateUserXP(
+        userId,
+        newXP,
+        newLevel,
+        newBadges.join(','),
+      );
     } catch (e) {
+      // Fallback to local database
       final localXP = await _localDb.getUserXP(userId);
       final currentXP = localXP?['xpPoints'] ?? 0;
       final newXP = currentXP + xpAmount;
@@ -142,36 +142,19 @@ class XPService {
     return badges;
   }
 
-  Future<void> _updateLeaderboard(String userId, int xp, String displayName, String? photoUrl) async {
-    try {
-      await _firestore.collection('leaderboard_public').doc(userId).set({
-        'userId': userId,
-        'displayName': displayName,
-        'photoUrl': photoUrl,
-        'points': xp,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      
-      await _firestore.collection(AppConstants.collectionUsers).doc(userId).update({
-        'points': xp,
-      });
-    } catch (e) {
-    }
-  }
-
   Future<Map<String, dynamic>?> getUserStats(String userId) async {
     try {
-      final userDoc = await _firestore
-          .collection(AppConstants.collectionUsers)
-          .doc(userId)
-          .get();
+      final userData = await _supabase
+          .from(AppConstants.collectionUsers)
+          .select('xp, level, badges')
+          .eq('id', userId)
+          .maybeSingle();
 
-      if (userDoc.exists) {
-        final data = userDoc.data()!;
+      if (userData != null) {
         return {
-          'xp': data['xp'] ?? 0,
-          'level': data['level'] ?? 1,
-          'badges': data['badges'] ?? [],
+          'xp': userData['xp'] ?? 0,
+          'level': userData['level'] ?? 1,
+          'badges': userData['badges'] ?? [],
         };
       }
     } catch (e) {
@@ -187,6 +170,7 @@ class XPService {
         return stats['xp'] ?? 0;
       }
     } catch (e) {
+      // Ignore
     }
     return 0;
   }

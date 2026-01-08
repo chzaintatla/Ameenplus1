@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 class HijriDateConverter {
   static const double hijriEpoch = 1948438.5;

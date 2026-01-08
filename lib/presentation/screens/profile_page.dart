@@ -1,19 +1,14 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/user_profile.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/profile_providers.dart';
 import '../../providers/theme_mode_provider.dart';
 import '../../providers/deeds_providers.dart';
-import '../../network/repositories/admin_repository.dart';
-import '../../network/repositories/user_profile_repository.dart';
 import '../../viewmodels/profile_viewmodel.dart';
-import '../../models/deed_model.dart';
 import '../../widgets/deed_card.dart';
-import 'edit_profile_screen.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -23,19 +18,27 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 final followersCountProvider = StreamProvider.family<int, String>((ref, userId) {
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(userId)
-      .snapshots()
-      .map((doc) => (doc.data()?['followersCount'] as num?)?.toInt() ?? 0);
+  final supabase = Supabase.instance.client;
+  return supabase
+      .from('users')
+      .stream(primaryKey: ['id'])
+      .eq('id', userId)
+      .map((data) {
+        if (data.isEmpty) return 0;
+        return (data.first['followers_count'] as num?)?.toInt() ?? 0;
+      });
 });
 
 final followingCountProvider = StreamProvider.family<int, String>((ref, userId) {
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(userId)
-      .snapshots()
-      .map((doc) => (doc.data()?['followingCount'] as num?)?.toInt() ?? 0);
+  final supabase = Supabase.instance.client;
+  return supabase
+      .from('users')
+      .stream(primaryKey: ['id'])
+      .eq('id', userId)
+      .map((data) {
+        if (data.isEmpty) return 0;
+        return (data.first['following_count'] as num?)?.toInt() ?? 0;
+      });
 });
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
@@ -54,10 +57,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final scheme = Theme.of(context).colorScheme;
     final authState = ref.watch(authStateProvider);
     final profileAsync = ref.watch(currentUserProfileProvider);
-    final isAdminAsync = ref.watch(isAdminProvider);
     final profileState = ref.watch(profileViewModelProvider);
     final themeMode = ref.watch(themeModeProvider);
-    final controller = ref.read(profileControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -98,7 +99,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 final user = authState.value;
                 if (user != null) {
                   await ref.read(userProfileRepositoryProvider).setProfilePublic(
-                        uid: user.uid,
+                        uid: user.id,
                         isPublic: value,
                       );
                   if (mounted && context.mounted) {
@@ -214,7 +215,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   data: (user) {
                     final isSignedIn = user != null;
                     final profile = profileState.profile ?? profileAsync.valueOrNull;
-                    final userId = user?.uid;
+                    final userId = user?.id;
 
                     return Column(
                       children: [
@@ -226,10 +227,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 backgroundColor: scheme.primary.withValues(alpha: 0.15),
                                 backgroundImage: profile?.photoUrl != null
                                     ? NetworkImage(profile!.photoUrl!)
-                                    : (user?.photoURL != null
-                                        ? NetworkImage(user!.photoURL!)
+                                    : (user?.userMetadata?['avatar_url'] != null
+                                        ? NetworkImage(user!.userMetadata!['avatar_url'] as String)
                                         : null),
-                                child: profile?.photoUrl == null && user?.photoURL == null
+                                child: profile?.photoUrl == null && user?.userMetadata?['avatar_url'] == null
                                     ? Icon(Icons.person_rounded,
                                         color: scheme.primary,
                                         size: mediaQuery.size.width * 0.15)
@@ -256,8 +257,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         SizedBox(height: mediaQuery.size.height * 0.02),
                         Text(
                           profile?.displayName ??
-                              user?.displayName ??
-                              (user?.isAnonymous == true ? 'Guest' : 'Not signed in'),
+                              user?.userMetadata?['display_name'] as String? ??
+                              'User',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.onSurface,
@@ -291,7 +292,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           if (_isExpanded) ...[
                             SizedBox(height: mediaQuery.size.height * 0.01),
                             if (profile?.email != null && profile!.email!.isNotEmpty) ...[
-                              if (isSignedIn && (userId == user?.uid || profile.isEmailPublic)) ...[
+                              if (isSignedIn && (userId == user?.id || profile.isEmailPublic)) ...[
                                 _buildInfoRow(
                                   context,
                                   Icons.email_outlined,
@@ -303,7 +304,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               ],
                             ],
                             if (profile?.phoneNumber != null && profile!.phoneNumber!.isNotEmpty) ...[
-                              if (isSignedIn && (userId == user?.uid || profile.isPhonePublic)) ...[
+                              if (isSignedIn && (userId == user?.id || profile.isPhonePublic)) ...[
                                 _buildInfoRow(
                                   context,
                                   Icons.phone_outlined,
@@ -329,7 +330,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 width: double.infinity,
                                 padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.5),
+                                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Column(
@@ -369,7 +370,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             width: double.infinity,
                             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.5),
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Column(
@@ -400,7 +401,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                     return Chip(
                                       label: Text(
                                         interest,
-                                        style: Theme.of(context).textTheme.labelSmall,
+                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                          color: Theme.of(context).brightness == Brightness.light
+                                              ? Colors.black
+                                              : null,
+                                        ),
                                       ),
                                       backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                                       padding: EdgeInsets.zero,
@@ -457,7 +462,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             return SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
-                child: _buildPostsSection(context, user.uid, mediaQuery),
+                child: _buildPostsSection(context, user.id, mediaQuery),
               ),
             );
           },
@@ -611,7 +616,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               return Container(
                 padding: EdgeInsets.all(mediaQuery.size.width * 0.08),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.3),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -683,11 +688,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(

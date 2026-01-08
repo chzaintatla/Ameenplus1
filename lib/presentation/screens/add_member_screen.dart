@@ -1,74 +1,45 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/follow_providers.dart';
-import '../../network/repositories/follow_repository.dart';
 
-/// Provider to fetch all users with public profiles
 final publicProfileUsersProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
-  final firestore = FirebaseFirestore.instance;
+  final supabase = Supabase.instance.client;
   final currentUser = ref.watch(authStateProvider).value;
   
   try {
-    await for (final snapshot in firestore
-        .collection('users')
-        .where('isProfilePublic', isEqualTo: true)
-        .snapshots()) {
-      
+    final stream = supabase
+        .from('users')
+        .stream(primaryKey: ['id']);
+
+    await for (final data in stream) {
       final users = <Map<String, dynamic>>[];
       
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final userId = doc.id;
+      for (final item in data) {
+        final userId = item['id'] as String;
+        final isPublic = item['is_profile_public'] as bool? ?? false;
         
-        // Skip current user
-        if (currentUser != null && userId == currentUser.uid) {
+        if (!isPublic || (currentUser != null && userId == currentUser.id)) {
           continue;
         }
         
         users.add({
           'uid': userId,
-          'displayName': data['displayName'] ?? 'User',
-          'photoUrl': data['photoUrl'] ?? data['profilePicture'],
-          'bio': data['bio'],
-          'interests': List<String>.from(data['interests'] ?? []),
-          'points': (data['points'] as num?)?.toInt() ?? 0,
-          'followersCount': (data['followersCount'] as num?)?.toInt() ?? 0,
+          'displayName': item['display_name'] ?? item['displayName'] ?? 'User',
+          'photoUrl': item['avatar_url'] ?? item['photoUrl'] ?? item['profilePicture'],
+          'bio': item['bio'],
+          'interests': List<String>.from(item['interests'] ?? []),
+          'points': (item['points'] as num?)?.toInt() ?? 0,
+          'followersCount': (item['followers_count'] as num?)?.toInt() ?? 0,
         });
       }
       
       yield users;
     }
   } catch (e) {
-    // If query fails (e.g., index not created), fallback to getting all users
-    await for (final snapshot in firestore.collection('users').snapshots()) {
-      final users = <Map<String, dynamic>>[];
-      
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final userId = doc.id;
-        final isPublic = data['isProfilePublic'] as bool? ?? false;
-        
-        // Skip if not public or is current user
-        if (!isPublic || (currentUser != null && userId == currentUser.uid)) {
-          continue;
-        }
-        
-        users.add({
-          'uid': userId,
-          'displayName': data['displayName'] ?? 'User',
-          'photoUrl': data['photoUrl'] ?? data['profilePicture'],
-          'bio': data['bio'],
-          'interests': List<String>.from(data['interests'] ?? []),
-          'points': (data['points'] as num?)?.toInt() ?? 0,
-          'followersCount': (data['followersCount'] as num?)?.toInt() ?? 0,
-        });
-      }
-      
-      yield users;
-    }
+    yield <Map<String, dynamic>>[];
   }
 });
 
@@ -195,7 +166,12 @@ class AddMemberScreen extends ConsumerWidget {
                               return Chip(
                                 label: Text(
                                   interest,
-                                  style: const TextStyle(fontSize: 10),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Theme.of(context).brightness == Brightness.light
+                                        ? Colors.black
+                                        : null,
+                                  ),
                                 ),
                                 padding: EdgeInsets.zero,
                                 visualDensity: VisualDensity.compact,
@@ -235,8 +211,8 @@ class AddMemberScreen extends ConsumerWidget {
                         ? const SizedBox.shrink()
                         : StreamBuilder<bool>(
                             stream: followRepo.watchIsFollowing(
-                              followerId: currentUser.uid,
-                              followingId: userId,
+                              currentUser.id,
+                              userId,
                             ),
                             builder: (context, snapshot) {
                               final isFollowing = snapshot.data ?? false;
@@ -246,8 +222,8 @@ class AddMemberScreen extends ConsumerWidget {
                                   onPressed: () async {
                                     try {
                                       await followRepo.unfollowUser(
-                                        followerId: currentUser.uid,
-                                        followingId: userId,
+                                        currentUser.id,
+                                        userId,
                                       );
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context).showSnackBar(
@@ -280,8 +256,8 @@ class AddMemberScreen extends ConsumerWidget {
                                 onPressed: () async {
                                   try {
                                     await followRepo.followUser(
-                                      followerId: currentUser.uid,
-                                      followingId: userId,
+                                      currentUser.id,
+                                      userId,
                                     );
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -354,4 +330,3 @@ class AddMemberScreen extends ConsumerWidget {
     );
   }
 }
-

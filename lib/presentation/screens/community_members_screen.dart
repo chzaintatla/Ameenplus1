@@ -1,27 +1,31 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/community_providers.dart';
 import '../../network/repositories/friends_repository.dart';
 
 final communityMembersProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, communityId) async {
+  final supabase = Supabase.instance.client;
   final repository = ref.read(communityRepositoryProvider);
   final community = await repository.getCommunity(communityId);
   if (community == null) return [];
 
-  final firestore = FirebaseFirestore.instance;
   final members = <Map<String, dynamic>>[];
 
   for (var memberId in community.members) {
     try {
-      final userDoc = await firestore.collection('users').doc(memberId).get();
-      if (userDoc.exists) {
-        final data = userDoc.data()!;
+      final userDoc = await supabase
+          .from('users')
+          .select()
+          .eq('id', memberId)
+          .maybeSingle();
+      
+      if (userDoc != null) {
         members.add({
           'id': memberId,
-          'name': data['displayName'] ?? 'Unknown',
-          'photoUrl': data['profilePicture'] ?? data['photoUrl'],
+          'name': userDoc['display_name'] ?? userDoc['displayName'] ?? 'Unknown',
+          'photoUrl': userDoc['avatar_url'] ?? userDoc['profilePicture'] ?? userDoc['photoUrl'],
         });
       } else {
         members.add({
@@ -89,7 +93,7 @@ class CommunityMembersScreen extends ConsumerWidget {
             itemCount: members.length,
             itemBuilder: (context, index) {
               final member = members[index];
-              final isCurrentUser = member['id'] == currentUser.value?.uid;
+              final isCurrentUser = member['id'] == currentUser.value?.id;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -126,8 +130,7 @@ class CommunityMembersScreen extends ConsumerWidget {
                         )
                       : FutureBuilder<bool>(
                           future: _checkIfFriends(
-                            FirebaseFirestore.instance,
-                            currentUser.value?.uid ?? '',
+                            currentUser.value?.id ?? '',
                             member['id'] as String,
                           ),
                           builder: (context, snapshot) {
@@ -147,10 +150,8 @@ class CommunityMembersScreen extends ConsumerWidget {
                                 if (user != null) {
                                   try {
                                     await friendsRepo.sendFriendRequest(
-                                      senderId: user.uid,
-                                      senderName: user.displayName ?? 'User',
-                                      senderPhotoUrl: user.photoURL,
-                                      receiverId: member['id'] as String,
+                                      user.id,
+                                      member['id'] as String,
                                     );
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -215,18 +216,20 @@ class CommunityMembersScreen extends ConsumerWidget {
     );
   }
 
-  static Future<bool> _checkIfFriends(
-    FirebaseFirestore firestore,
-    String userId1,
-    String userId2,
-  ) async {
+  static Future<bool> _checkIfFriends(String userId1, String userId2) async {
     if (userId1.isEmpty || userId2.isEmpty) return false;
 
     try {
-      final userDoc = await firestore.collection('users').doc(userId1).get();
-      if (!userDoc.exists) return false;
+      final supabase = Supabase.instance.client;
+      final userDoc = await supabase
+          .from('users')
+          .select('friends')
+          .eq('id', userId1)
+          .maybeSingle();
+      
+      if (userDoc == null) return false;
 
-      final friendsList = List<String>.from(userDoc.data()?['friends'] ?? []);
+      final friendsList = List<String>.from(userDoc['friends'] ?? []);
       return friendsList.contains(userId2);
     } catch (e) {
       return false;

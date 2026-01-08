@@ -1,7 +1,6 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/app_database.dart';
@@ -10,8 +9,7 @@ import 'notification_repository.dart';
 import '../../models/deed_model.dart';
 
 class DeedsRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   final AppDatabase _localDb = AppDatabase.instance;
   final XPService _xpService = XPService();
   final NotificationRepository _notificationRepo = NotificationRepository();
@@ -39,7 +37,7 @@ class DeedsRepository {
       String? imageUrl;
       List<String> mediaUrls = [];
 
-      // Upload image
+      // Upload image to Supabase Storage
       if (imagePath != null && !imagePath.startsWith('http')) {
         final file = File(imagePath);
         if (await file.exists()) {
@@ -47,9 +45,13 @@ class DeedsRepository {
             throw Exception('Image must be less than 10MB');
           }
           final fileName = '${const Uuid().v4()}.jpg';
-          final ref = _storage.ref().child('deeds').child(userId).child(fileName);
-          await ref.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
-          imageUrl = await ref.getDownloadURL();
+          final filePath = '$userId/$fileName';
+          
+          await _supabase.storage
+              .from('deeds')
+              .upload(filePath, file, fileOptions: const FileOptions(contentType: 'image/jpeg'));
+          
+          imageUrl = _supabase.storage.from('deeds').getPublicUrl(filePath);
           mediaUrls.add(imageUrl);
         }
       }
@@ -62,14 +64,18 @@ class DeedsRepository {
             throw Exception('Video must be less than 50MB');
           }
           final fileName = '${const Uuid().v4()}.mp4';
-          final ref = _storage.ref().child('deeds').child(userId).child(fileName);
-          await ref.putFile(file, SettableMetadata(contentType: 'video/mp4'));
-          final videoUrl = await ref.getDownloadURL();
+          final filePath = '$userId/$fileName';
+          
+          await _supabase.storage
+              .from('deeds')
+              .upload(filePath, file, fileOptions: const FileOptions(contentType: 'video/mp4'));
+          
+          final videoUrl = _supabase.storage.from('deeds').getPublicUrl(filePath);
           mediaUrls.add(videoUrl);
         }
       }
 
-      // Upload other files (PDF, Audio, Word, Excel)
+      // Upload other files
       if (filePath != null && !filePath.startsWith('http')) {
         final file = File(filePath);
         if (await file.exists()) {
@@ -80,15 +86,24 @@ class DeedsRepository {
           
           String extension = filePath.split('.').last.toLowerCase();
           String contentType = 'application/octet-stream';
-          if (extension == 'pdf') contentType = 'application/pdf';
-          else if (['mp3', 'wav', 'm4a'].contains(extension)) contentType = 'audio/$extension';
-          else if (['doc', 'docx'].contains(extension)) contentType = 'application/msword';
-          else if (['xls', 'xlsx'].contains(extension)) contentType = 'application/vnd.ms-excel';
+          if (extension == 'pdf') {
+            contentType = 'application/pdf';
+          } else if (['mp3', 'wav', 'm4a'].contains(extension)) {
+            contentType = 'audio/$extension';
+          } else if (['doc', 'docx'].contains(extension)) {
+            contentType = 'application/msword';
+          } else if (['xls', 'xlsx'].contains(extension)) {
+            contentType = 'application/vnd.ms-excel';
+          }
           
           final fileName = '${const Uuid().v4()}.$extension';
-          final ref = _storage.ref().child('deeds').child(userId).child(fileName);
-          await ref.putFile(file, SettableMetadata(contentType: contentType));
-          final fileUrl = await ref.getDownloadURL();
+          final storagePath = '$userId/$fileName';
+          
+          await _supabase.storage
+              .from('deeds')
+              .upload(storagePath, file, fileOptions: FileOptions(contentType: contentType));
+          
+          final fileUrl = _supabase.storage.from('deeds').getPublicUrl(storagePath);
           mediaUrls.add(fileUrl);
         }
       }
@@ -116,10 +131,9 @@ class DeedsRepository {
         createdAt: DateTime.now(),
       );
 
-      await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .set(deed.toFirestore());
+      await _supabase
+          .from(AppConstants.collectionDeeds)
+          .insert(deed.toMap());
 
       await _localDb.cacheDeed(deed.toLocal());
 
@@ -132,121 +146,69 @@ class DeedsRepository {
   }
 
   Stream<List<DeedModel>> getDeedsFeed({int limit = 20}) {
-    return _firestore
-        .collection(AppConstants.collectionDeeds)
-        .orderBy('createdAt', descending: true)
+    return _supabase
+        .from(AppConstants.collectionDeeds)
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
         .limit(limit)
-        .snapshots()
-        .map((s) => s.docs.map((d) => DeedModel.fromFirestore(d)).toList());
+        .map((data) => data.map((item) => DeedModel.fromMap(item)).toList());
   }
 
   Stream<List<DeedModel>> getUserDeeds(String userId, {int limit = 50}) {
-    final controller = StreamController<List<DeedModel>>();
-    StreamSubscription? subscription;
-    bool fallbackUsed = false;
-    
-    subscription = _firestore
-        .collection(AppConstants.collectionDeeds)
-        .where('userId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
+    return _supabase
+        .from(AppConstants.collectionDeeds)
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
         .limit(limit)
-        .snapshots()
-        .map((s) => s.docs.map((d) => DeedModel.fromFirestore(d)).toList())
-        .listen(
-          (deeds) {
-            if (!fallbackUsed) {
-              controller.add(deeds);
-            }
-          },
-          onError: (error) {
-            final errorStr = error.toString();
-            if ((errorStr.contains('index') || errorStr.contains('FAILED_PRECONDITION')) && !fallbackUsed) {
-              fallbackUsed = true;
-              subscription?.cancel();
-              _getUserDeedsFallback(userId, limit).listen(
-                (deeds) => controller.add(deeds),
-                onError: (e) => controller.addError(e),
-                onDone: () => controller.close(),
-                cancelOnError: false,
-              );
-            } else {
-              controller.addError(error);
-            }
-          },
-          onDone: () {
-            if (!fallbackUsed) {
-              controller.close();
-            }
-          },
-          cancelOnError: false,
-        );
-    
-    controller.onCancel = () {
-      subscription?.cancel();
-    };
-    
-    return controller.stream;
-  }
-
-  Stream<List<DeedModel>> _getUserDeedsFallback(String userId, int limit) async* {
-    try {
-      await for (final snapshot in _firestore
-          .collection(AppConstants.collectionDeeds)
-          .where('userId', isEqualTo: userId)
-          .limit(limit * 2)
-          .snapshots()) {
-        final deeds = snapshot.docs.map((d) => DeedModel.fromFirestore(d)).toList();
-        deeds.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        yield deeds.take(limit).toList();
-      }
-    } catch (e) {
-      yield <DeedModel>[];
-    }
+        .map((data) => data.map((item) => DeedModel.fromMap(item)).toList());
   }
 
   Future<void> likeDeed(String deedId, String userId) async {
-    final ref = _firestore.collection(AppConstants.collectionDeeds).doc(deedId);
+    // Get current deed
+    final deedData = await _supabase
+        .from(AppConstants.collectionDeeds)
+        .select()
+        .eq('id', deedId)
+        .maybeSingle();
 
-    await _firestore.runTransaction((t) async {
-      final snap = await t.get(ref);
-      if (!snap.exists) return;
+    if (deedData == null) return;
 
-      final data = snap.data()!;
-      final likes = List<String>.from(data['likes'] ?? []);
+    final likes = List<String>.from(deedData['likes'] ?? []);
+    final isLiked = likes.contains(userId);
 
-      likes.contains(userId) ? likes.remove(userId) : likes.add(userId);
+    if (isLiked) {
+      likes.remove(userId);
+    } else {
+      likes.add(userId);
+    }
 
-      t.update(ref, {'likes': likes});
-    });
+    await _supabase
+        .from(AppConstants.collectionDeeds)
+        .update({'likes': likes})
+        .eq('id', deedId);
 
-    final snap = await ref.get();
-    if (!snap.exists) return;
+    await _localDb.updateDeedLikeStatus(deedId, !isLiked, likes.length);
 
-    final deed = DeedModel.fromFirestore(snap);
-
-    await _localDb.updateDeedLikeStatus(
-      deedId,
-      deed.isLikedBy(userId),
-      deed.likesCount,
-    );
-
-    if (deed.isLikedBy(userId)) {
+    if (!isLiked) {
       await _xpService.awardXPForLike(userId);
 
-      final data = snap.data()!;
-      final ownerId = data['userId'] as String;
+      final ownerId = deedData['user_id'] as String;
 
       if (ownerId != userId) {
-        // Get the liker's name (current user who clicked like)
         String likerName = 'Someone';
         try {
-          final likerDoc = await _firestore.collection(AppConstants.collectionUsers).doc(userId).get();
-          if (likerDoc.exists) {
-            final likerData = likerDoc.data()!;
-            likerName = likerData['displayName'] as String? ?? likerData['userName'] as String? ?? 'Someone';
+          final likerData = await _supabase
+              .from(AppConstants.collectionUsers)
+              .select()
+              .eq('id', userId)
+              .maybeSingle();
+          
+          if (likerData != null) {
+            likerName = likerData['display_name'] as String? ?? 'Someone';
           }
         } catch (e) {
-          // Fallback to 'Someone' if user lookup fails
+          // Fallback to 'Someone'
         }
 
         await _notificationRepo.createNotification(
@@ -261,20 +223,33 @@ class DeedsRepository {
   }
 
   Future<void> shareDeed(String deedId, String userId) async {
-    await _firestore
-        .collection(AppConstants.collectionDeeds)
-        .doc(deedId)
-        .update({'sharesCount': FieldValue.increment(1)});
+    final deedData = await _supabase
+        .from(AppConstants.collectionDeeds)
+        .select('shares_count')
+        .eq('id', deedId)
+        .maybeSingle();
+
+    if (deedData != null) {
+      final currentShares = deedData['shares_count'] ?? 0;
+      await _supabase
+          .from(AppConstants.collectionDeeds)
+          .update({'shares_count': currentShares + 1})
+          .eq('id', deedId);
+    }
 
     await _xpService.awardXPForShare(userId);
   }
 
   Future<void> favoriteDeed(String deedId, String userId) async {
-    final ref = _firestore.collection(AppConstants.collectionUsers).doc(userId);
-    final snap = await ref.get();
-    if (!snap.exists) return;
+    final userData = await _supabase
+        .from(AppConstants.collectionUsers)
+        .select('favorites')
+        .eq('id', userId)
+        .maybeSingle();
 
-    final favorites = List<String>.from(snap.data()?['favorites'] ?? []);
+    if (userData == null) return;
+
+    final favorites = List<String>.from(userData['favorites'] ?? []);
 
     if (favorites.contains(deedId)) {
       favorites.remove(deedId);
@@ -283,35 +258,52 @@ class DeedsRepository {
       await _xpService.awardXPForFavorite(userId);
     }
 
-    await ref.update({'favorites': favorites});
+    await _supabase
+        .from(AppConstants.collectionUsers)
+        .update({'favorites': favorites})
+        .eq('id', userId);
   }
 
   Stream<bool> watchIsFavorited(String deedId, String userId) {
-    return _firestore
-        .collection(AppConstants.collectionUsers)
-        .doc(userId)
-        .snapshots()
-        .map((s) {
-      if (!s.exists) return false;
-      final favorites = List<String>.from(s.data()?['favorites'] ?? []);
-      return favorites.contains(deedId);
-    });
+    return _supabase
+        .from(AppConstants.collectionUsers)
+        .stream(primaryKey: ['id'])
+        .eq('id', userId)
+        .map((data) {
+          if (data.isEmpty) return false;
+          final favorites = List<String>.from(data.first['favorites'] ?? []);
+          return favorites.contains(deedId);
+        });
   }
 
   Future<void> deleteDeed(String deedId, String userId) async {
-    final ref = _firestore.collection(AppConstants.collectionDeeds).doc(deedId);
-    final snap = await ref.get();
-    if (!snap.exists) return;
+    final deedData = await _supabase
+        .from(AppConstants.collectionDeeds)
+        .select()
+        .eq('id', deedId)
+        .maybeSingle();
 
-    if (snap.data()!['userId'] != userId) {
+    if (deedData == null) return;
+
+    if (deedData['user_id'] != userId) {
       throw Exception('Unauthorized');
     }
 
-    final imageUrl = snap.data()!['imageUrl'];
-    if (imageUrl != null) {
-      await _storage.refFromURL(imageUrl).delete();
+    final imageUrl = deedData['image_url'];
+    if (imageUrl != null && imageUrl.toString().contains('supabase')) {
+      try {
+        // Extract path from URL and delete from storage
+        final uri = Uri.parse(imageUrl);
+        final path = uri.pathSegments.last;
+        await _supabase.storage.from('deeds').remove([path]);
+      } catch (e) {
+        // Ignore storage deletion errors
+      }
     }
 
-    await ref.delete();
+    await _supabase
+        .from(AppConstants.collectionDeeds)
+        .delete()
+        .eq('id', deedId);
   }
 }

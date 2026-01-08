@@ -1,7 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-/// Comment model for deed comments
-class CommentModel {
+﻿class CommentModel {
   final String id;
   final String deedId;
   final String userId;
@@ -22,37 +19,34 @@ class CommentModel {
     required this.createdAt,
   });
 
-  factory CommentModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    
+  bool isLikedBy(String userId) => likes.contains(userId);
+  int get likesCount => likes.length;
+
+  factory CommentModel.fromMap(Map<String, dynamic> data) {
     return CommentModel(
-      id: doc.id,
-      deedId: data['deedId'] ?? '',
-      userId: data['userId'] ?? '',
-      userName: data['userName'] ?? 'Anonymous',
-      userPhotoUrl: data['userPhotoUrl'],
+      id: data['id']?.toString() ?? '',
+      deedId: data['deed_id'] ?? data['deedId'] ?? '',
+      userId: data['user_id'] ?? data['userId'] ?? '',
+      userName: data['user_name'] ?? data['userName'] ?? 'Anonymous',
+      userPhotoUrl: data['user_photo_url'] ?? data['userPhotoUrl'],
       content: data['content'] ?? '',
       likes: List<String>.from(data['likes'] ?? []),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
-      'deedId': deedId,
-      'userId': userId,
-      'userName': userName,
-      'userPhotoUrl': userPhotoUrl,
+      'id': id,
+      'deed_id': deedId,
+      'user_id': userId,
+      'user_name': userName,
+      'user_photo_url': userPhotoUrl,
       'content': content,
       'likes': likes,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'created_at': createdAt.toIso8601String(),
     };
   }
-
-  bool isLikedBy(String userId) {
-    return likes.contains(userId);
-  }
-
-  int get likesCount => likes.length;
 }
-

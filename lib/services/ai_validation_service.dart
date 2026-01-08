@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿
 import 'groq_api_service.dart';
 import 'islamic_input_filter.dart';
 import 'package:path/path.dart' as path;
@@ -22,6 +22,7 @@ class AIContentValidationService {
         text: text,
         mediaType: mediaType,
         mediaDescription: mediaDescription,
+        mediaPath: mediaPath,
       );
 
       return ValidationResult(
@@ -84,15 +85,15 @@ If the message is about non-Islamic topics, respond with isIslamic: false.
 
     switch (mediaType) {
       case 'image':
-        return 'Image file: $fileName (${extension})';
+        return 'Image file: $fileName ($extension)';
       case 'video':
-        return 'Video file: $fileName (${extension})';
+        return 'Video file: $fileName ($extension)';
       case 'pdf':
         return 'PDF document: $fileName';
       case 'audio':
-        return 'Audio file: $fileName (${extension})';
+        return 'Audio file: $fileName ($extension)';
       case 'document':
-        return 'Document file: $fileName (${extension})';
+        return 'Document file: $fileName ($extension)';
       default:
         return 'Media file: $fileName';
     }

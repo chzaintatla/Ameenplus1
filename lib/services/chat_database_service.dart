@@ -7,12 +7,16 @@ class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final String? mediaPath;
+  final String? mediaType;
 
   ChatMessage({
     this.id,
     required this.text,
     required this.isUser,
     required this.timestamp,
+    this.mediaPath,
+    this.mediaType,
   });
 
   Map<String, dynamic> toMap() {
@@ -21,6 +25,8 @@ class ChatMessage {
       'text': text,
       'isUser': isUser ? 1 : 0,
       'timestamp': timestamp.toIso8601String(),
+      'mediaPath': mediaPath,
+      'mediaType': mediaType,
     };
   }
 
@@ -30,7 +36,14 @@ class ChatMessage {
       text: map['text'] as String,
       isUser: (map['isUser'] as int) == 1,
       timestamp: DateTime.parse(map['timestamp'] as String),
+      mediaPath: map['mediaPath'] as String?,
+      mediaType: map['mediaType'] as String?,
     );
+  }
+
+  @override
+  String toString() {
+    return 'ChatMessage(id: $id, text: $text, isUser: $isUser, timestamp: $timestamp, mediaPath: $mediaPath, mediaType: $mediaType)';
   }
 }
 
@@ -49,7 +62,7 @@ class ChatDatabaseService {
 
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'chat_messages.db');
+    final path = join(dbPath, 'chat_messages_v2.db');
 
     return await openDatabase(
       path,
@@ -60,7 +73,9 @@ class ChatDatabaseService {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             text TEXT NOT NULL,
             isUser INTEGER NOT NULL,
-            timestamp TEXT NOT NULL
+            timestamp TEXT NOT NULL,
+            mediaPath TEXT,
+            mediaType TEXT
           )
         ''');
         await db.execute('''
@@ -123,7 +138,8 @@ class ChatDatabaseService {
 
   Future<int> getMessageCount() async {
     final db = await database;
-    final result = await db.rawQuery('SELECT COUNT(*) as count FROM chat_messages');
+    final result =
+        await db.rawQuery('SELECT COUNT(*) as count FROM chat_messages');
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
@@ -132,4 +148,3 @@ class ChatDatabaseService {
     await db.close();
   }
 }
-

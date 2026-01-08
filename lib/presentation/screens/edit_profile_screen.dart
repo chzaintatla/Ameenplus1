@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -492,29 +492,65 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(
-                          value: true,
-                          label: Text('Calendar'),
-                          icon: Icon(Icons.calendar_today, size: 18),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(
+                        segmentedButtonTheme: SegmentedButtonThemeData(
+                          style: ButtonStyle(
+                            backgroundColor: WidgetStateProperty.resolveWith<Color?>(
+                              (Set<WidgetState> states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return Theme.of(context).colorScheme.primary;
+                                }
+                                return Theme.of(context).colorScheme.surface;
+                              },
+                            ),
+                            foregroundColor: WidgetStateProperty.resolveWith<Color?>(
+                              (Set<WidgetState> states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return Colors.white;
+                                }
+                                return Theme.of(context).brightness == Brightness.light
+                                    ? Colors.black
+                                    : null;
+                              },
+                            ),
+                            iconColor: WidgetStateProperty.resolveWith<Color?>(
+                              (Set<WidgetState> states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return Colors.white;
+                                }
+                                return Theme.of(context).brightness == Brightness.light
+                                    ? Colors.black
+                                    : null;
+                              },
+                            ),
+                          ),
                         ),
-                        ButtonSegment(
-                          value: false,
-                          label: Text('Manual'),
-                          icon: Icon(Icons.edit, size: 18),
-                        ),
-                      ],
-                      selected: {_useCalendarPicker},
-                      onSelectionChanged: (Set<bool> selected) {
-                        setState(() {
-                          _useCalendarPicker = selected.first;
-                          if (!_useCalendarPicker) {
-                            _birthdayController.clear();
-                            _selectedBirthday = null;
-                          }
-                        });
-                      },
+                      ),
+                      child: SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: true,
+                            label: Text('Calendar'),
+                            icon: Icon(Icons.calendar_today, size: 18),
+                          ),
+                          ButtonSegment(
+                            value: false,
+                            label: Text('Manual'),
+                            icon: Icon(Icons.edit, size: 18),
+                          ),
+                        ],
+                        selected: {_useCalendarPicker},
+                        onSelectionChanged: (Set<bool> selected) {
+                          setState(() {
+                            _useCalendarPicker = selected.first;
+                            if (!_useCalendarPicker) {
+                              _birthdayController.clear();
+                              _selectedBirthday = null;
+                            }
+                          });
+                        },
+                      ),
                     ),
                   ),
                 ],
@@ -689,7 +725,16 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 children: _availableInterests.map((interest) {
                   final isSelected = _selectedInterests.contains(interest);
                   return FilterChip(
-                    label: Text(interest),
+                    label: Text(
+                      interest,
+                      style: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : (Theme.of(context).brightness == Brightness.light
+                                ? Colors.black
+                                : null),
+                      ),
+                    ),
                     selected: isSelected,
                     onSelected: (selected) {
                       setState(() {

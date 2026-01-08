@@ -1,87 +1,64 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-class NotificationModel {
+﻿class NotificationModel {
   final String id;
   final String userId;
-  final String type; // 'deed_like', 'deed_comment', 'friend_request', 'community_post', etc.
+  final String type;
   final String title;
-  final String body;
-  final String? actionId; // ID of the related item (deedId, userId, etc.)
-  final Map<String, dynamic>? data; // Additional data
+  final String? body;
+  final String? actionId;
   final bool read;
   final DateTime createdAt;
-  final DateTime? readAt;
 
   NotificationModel({
     required this.id,
     required this.userId,
     required this.type,
     required this.title,
-    required this.body,
+    this.body,
     this.actionId,
-    this.data,
     this.read = false,
     required this.createdAt,
-    this.readAt,
   });
 
-  factory NotificationModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    
+  factory NotificationModel.fromMap(Map<String, dynamic> data) {
     return NotificationModel(
-      id: doc.id,
-      userId: data['userId'] ?? '',
+      id: data['id']?.toString() ?? '',
+      userId: data['user_id'] ?? data['userId'] ?? '',
       type: data['type'] ?? '',
       title: data['title'] ?? '',
-      body: data['body'] ?? '',
-      actionId: data['actionId'],
-      data: data['data'],
+      body: data['body'],
+      actionId: data['action_id'] ?? data['actionId'],
       read: data['read'] ?? false,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      readAt: data['readAt'] != null
-          ? (data['readAt'] as Timestamp).toDate()
-          : null,
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
-      'userId': userId,
+      'id': id,
+      'user_id': userId,
       'type': type,
       'title': title,
       'body': body,
-      'actionId': actionId,
-      'data': data,
+      'action_id': actionId,
       'read': read,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'readAt': readAt != null ? Timestamp.fromDate(readAt!) : null,
+      'created_at': createdAt.toIso8601String(),
     };
   }
 
   NotificationModel copyWith({
-    String? id,
-    String? userId,
-    String? type,
-    String? title,
-    String? body,
-    String? actionId,
-    Map<String, dynamic>? data,
     bool? read,
-    DateTime? createdAt,
-    DateTime? readAt,
   }) {
     return NotificationModel(
-      id: id ?? this.id,
-      userId: userId ?? this.userId,
-      type: type ?? this.type,
-      title: title ?? this.title,
-      body: body ?? this.body,
-      actionId: actionId ?? this.actionId,
-      data: data ?? this.data,
+      id: id,
+      userId: userId,
+      type: type,
+      title: title,
+      body: body,
+      actionId: actionId,
       read: read ?? this.read,
-      createdAt: createdAt ?? this.createdAt,
-      readAt: readAt ?? this.readAt,
+      createdAt: createdAt,
     );
   }
 }
-

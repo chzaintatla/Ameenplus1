@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/user_profile.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/profile_providers.dart';
@@ -17,20 +17,28 @@ final userProfilePreviewProvider = FutureProvider.family<UserProfile?, String>((
   return await repository.getProfile(userId);
 });
 
-final followersCountProvider = StreamProvider.family<int, String>((ref, userId) {
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(userId)
-      .snapshots()
-      .map((doc) => (doc.data()?['followersCount'] as num?)?.toInt() ?? 0);
+final previewFollowersCountProvider = StreamProvider.family<int, String>((ref, userId) {
+  final supabase = Supabase.instance.client;
+  return supabase
+      .from('users')
+      .stream(primaryKey: ['id'])
+      .eq('id', userId)
+      .map((data) {
+        if (data.isEmpty) return 0;
+        return (data.first['followers_count'] as num?)?.toInt() ?? 0;
+      });
 });
 
-final followingCountProvider = StreamProvider.family<int, String>((ref, userId) {
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(userId)
-      .snapshots()
-      .map((doc) => (doc.data()?['followingCount'] as num?)?.toInt() ?? 0);
+final previewFollowingCountProvider = StreamProvider.family<int, String>((ref, userId) {
+  final supabase = Supabase.instance.client;
+  return supabase
+      .from('users')
+      .stream(primaryKey: ['id'])
+      .eq('id', userId)
+      .map((data) {
+        if (data.isEmpty) return 0;
+        return (data.first['following_count'] as num?)?.toInt() ?? 0;
+      });
 });
 
 class UserProfilePreviewScreen extends ConsumerWidget {
@@ -46,7 +54,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
     final mediaQuery = MediaQuery.of(context);
     final currentUser = ref.watch(authStateProvider).value;
     final profileAsync = ref.watch(userProfilePreviewProvider(userId));
-    final isOwnProfile = currentUser?.uid == userId;
+    final isOwnProfile = currentUser?.id == userId;
 
     return Scaffold(
       appBar: AppBar(
@@ -110,7 +118,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                           ),
                           if (!isOwnProfile) ...[
                             SizedBox(height: mediaQuery.size.height * 0.015),
-                            _buildFollowButton(context, ref, currentUser?.uid ?? '', userId),
+                            _buildFollowButton(context, ref, currentUser?.id ?? '', userId),
                           ],
                           SizedBox(height: mediaQuery.size.height * 0.015),
                           Row(
@@ -127,7 +135,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                               width: double.infinity,
                               padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.5),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
@@ -147,7 +155,11 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                                 return Chip(
                                   label: Text(
                                     interest,
-                                    style: Theme.of(context).textTheme.labelSmall,
+                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      color: Theme.of(context).brightness == Brightness.light
+                                          ? Colors.black
+                                          : null,
+                                    ),
                                   ),
                                   backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                                   padding: EdgeInsets.zero,
@@ -220,8 +232,8 @@ class UserProfilePreviewScreen extends ConsumerWidget {
             try {
               if (isFollowing) {
                 await repository.unfollowUser(
-                  followerId: currentUserId,
-                  followingId: targetUserId,
+                  currentUserId,
+                  targetUserId,
                 );
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -230,8 +242,8 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                 }
               } else {
                 await repository.followUser(
-                  followerId: currentUserId,
-                  followingId: targetUserId,
+                  currentUserId,
+                  targetUserId,
                 );
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -254,7 +266,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
           label: Text(isFollowing ? 'Following' : 'Follow'),
           style: ElevatedButton.styleFrom(
             backgroundColor: isFollowing
-                ? Theme.of(context).colorScheme.surfaceVariant
+                ? Theme.of(context).colorScheme.surfaceContainerHighest
                 : Theme.of(context).colorScheme.primary,
             foregroundColor: isFollowing
                 ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -278,8 +290,8 @@ class UserProfilePreviewScreen extends ConsumerWidget {
     MediaQueryData mediaQuery,
   ) {
     final countAsync = isFollowers
-        ? ref.watch(followersCountProvider(userId))
-        : ref.watch(followingCountProvider(userId));
+        ? ref.watch(previewFollowersCountProvider(userId))
+        : ref.watch(previewFollowingCountProvider(userId));
 
     return InkWell(
       onTap: () {
@@ -369,7 +381,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
               return Container(
                 padding: EdgeInsets.all(mediaQuery.size.width * 0.08),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.3),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -424,7 +436,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                             child: DeedCard(
                               deed: deed,
-                              currentUserId: ref.read(authStateProvider).value?.uid,
+                              currentUserId: ref.read(authStateProvider).value?.id,
                             ),
                           ),
                         ),
@@ -434,7 +446,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
                     child: Center(
                       child: Padding(

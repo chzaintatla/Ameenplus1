@@ -1,8 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
-/// Kaaba Image Widget for Qibla Compass
-/// Displays a Kaaba image that rotates to point towards Qibla
 class KaabaImageWidget extends StatelessWidget {
   final double rotationAngle; // Angle in radians
   final double size;

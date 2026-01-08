@@ -1,4 +1,4 @@
-/// RAG (Retrieval-Augmented Generation) Service
+﻿/// RAG (Retrieval-Augmented Generation) Service
 /// Provides Islamic knowledge base context for AI responses
 /// 
 /// Note: This is a basic implementation. For production, you would:

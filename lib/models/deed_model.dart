@@ -1,6 +1,4 @@
-import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
+﻿
 class DeedModel {
   final String id;
   final String userId;
@@ -50,88 +48,64 @@ class DeedModel {
     this.updatedAt,
   });
 
-  factory DeedModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-
+  factory DeedModel.fromMap(Map<String, dynamic> data) {
     return DeedModel(
-      id: doc.id,
-      userId: data['userId'] ?? '',
-      userName: data['userName'] ?? 'Anonymous',
-      userPhotoUrl: data['userPhotoUrl'],
-      deedType: data['deedType'] ?? 'general',
+      id: data['id']?.toString() ?? '',
+      userId: data['user_id'] ?? data['userId'] ?? '',
+      userName: data['user_name'] ?? data['userName'] ?? 'Anonymous',
+      userPhotoUrl: data['user_photo_url'] ?? data['userPhotoUrl'],
+      deedType: data['deed_type'] ?? data['deedType'] ?? 'general',
       content: data['content'] ?? '',
-      arabicText: data['arabicText'],
+      arabicText: data['arabic_text'] ?? data['arabicText'],
       translation: data['translation'],
       reference: data['reference'],
       category: data['category'],
-      imageUrl: data['imageUrl'],
-      mediaUrls: List<String>.from(data['mediaUrls'] ?? []),
-      mediaType: data['mediaType'] as String?,
+      imageUrl: data['image_url'] ?? data['imageUrl'],
+      mediaUrls: List<String>.from(data['media_urls'] ?? data['mediaUrls'] ?? []),
+      mediaType: data['media_type'] as String? ?? data['mediaType'] as String?,
       interests: List<String>.from(data['interests'] ?? []),
-      isValidated: data['isValidated'] as bool? ?? false,
-      validationReason: data['validationReason'] as String?,
-      validationConfidence: (data['validationConfidence'] as num?)?.toDouble(),
+      isValidated: (data['is_validated'] ?? data['isValidated']) as bool? ?? false,
+      validationReason: data['validation_reason'] ?? data['validationReason'] as String?,
+      validationConfidence: (data['validation_confidence'] ?? data['validationConfidence'] as num?)?.toDouble(),
       likes: List<String>.from(data['likes'] ?? []),
-      commentsCount: data['commentsCount'] ?? 0,
-      sharesCount: data['sharesCount'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: data['updatedAt'] != null
-          ? (data['updatedAt'] as Timestamp).toDate()
-          : null,
+      commentsCount: data['comments_count'] ?? data['commentsCount'] ?? 0,
+      sharesCount: data['shares_count'] ?? data['sharesCount'] ?? 0,
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
+      updatedAt: data['updated_at'] != null
+          ? (data['updated_at'] is String ? DateTime.parse(data['updated_at']) : data['updated_at'] as DateTime?)
+          : (data['updatedAt'] != null 
+              ? (data['updatedAt'] is String ? DateTime.parse(data['updatedAt']) : data['updatedAt'] as DateTime?)
+              : null),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
-    final map = <String, dynamic>{
-      'userId': userId,
-      'userName': userName,
-      'deedType': deedType,
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'user_name': userName,
+      'deed_type': deedType,
       'content': content,
       'likes': likes,
-      'commentsCount': commentsCount,
-      'sharesCount': sharesCount,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'comments_count': commentsCount,
+      'shares_count': sharesCount,
+      'created_at': createdAt.toIso8601String(),
+      'user_photo_url': userPhotoUrl,
+      'arabic_text': arabicText,
+      'translation': translation,
+      'reference': reference,
+      'category': category,
+      'image_url': imageUrl,
+      'media_urls': mediaUrls,
+      'media_type': mediaType,
+      'interests': interests,
+      'is_validated': isValidated,
+      'validation_reason': validationReason,
+      'validation_confidence': validationConfidence,
+      'updated_at': updatedAt?.toIso8601String(),
     };
-
-    if (userPhotoUrl != null) {
-      map['userPhotoUrl'] = userPhotoUrl;
-    }
-    if (arabicText != null) {
-      map['arabicText'] = arabicText;
-    }
-    if (translation != null) {
-      map['translation'] = translation;
-    }
-    if (reference != null) {
-      map['reference'] = reference;
-    }
-    if (category != null) {
-      map['category'] = category;
-    }
-    if (imageUrl != null) {
-      map['imageUrl'] = imageUrl;
-    }
-    if (mediaUrls.isNotEmpty) {
-      map['mediaUrls'] = mediaUrls;
-    }
-    if (mediaType != null) {
-      map['mediaType'] = mediaType;
-    }
-    if (interests.isNotEmpty) {
-      map['interests'] = interests;
-    }
-    map['isValidated'] = isValidated;
-    if (validationReason != null) {
-      map['validationReason'] = validationReason;
-    }
-    if (validationConfidence != null) {
-      map['validationConfidence'] = validationConfidence;
-    }
-    if (updatedAt != null) {
-      map['updatedAt'] = Timestamp.fromDate(updatedAt!);
-    }
-
-    return map;
   }
 
   Map<String, dynamic> toLocal() {

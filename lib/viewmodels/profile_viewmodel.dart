@@ -1,6 +1,5 @@
-import 'dart:io';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+﻿import 'dart:io';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../network/repositories/auth_repository.dart';
 import '../providers/auth_providers.dart';
@@ -26,7 +25,7 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final profile = await profileRepository.getProfile(user.uid);
+      final profile = await profileRepository.getProfile(user.id);
       state = state.copyWith(
         isLoading: false,
         profile: profile,
@@ -46,20 +45,38 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
     state = state.copyWith(isUploadingImage: true, error: null);
 
     try {
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('profile_images')
-          .child('${user.uid}.jpg');
+      final supabase = Supabase.instance.client;
+      final fileName = '${user.id}.jpg';
+      final filePath = 'profile_images/$fileName';
 
-      await storageRef.putFile(imageFile);
-      final downloadUrl = await storageRef.getDownloadURL();
+      // Upload to Supabase Storage
+      await supabase.storage
+          .from('avatars')
+          .upload(
+            filePath,
+            imageFile,
+            fileOptions: const FileOptions(
+              cacheControl: '3600',
+              upsert: true,
+            ),
+          );
+
+      // Get public URL
+      final downloadUrl = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
 
       await profileRepository.updateProfile(
-        uid: user.uid,
+        uid: user.id,
         photoUrl: downloadUrl,
       );
 
-      await user.updatePhotoURL(downloadUrl);
+      // Update auth user metadata
+      await supabase.auth.updateUser(
+        UserAttributes(
+          data: {'avatar_url': downloadUrl},
+        ),
+      );
 
       state = state.copyWith(
         isUploadingImage: false,
@@ -97,7 +114,7 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
 
     try {
       await profileRepository.updateProfile(
-        uid: user.uid,
+        uid: user.id,
         displayName: displayName,
         bio: bio,
         interests: interests,
@@ -109,9 +126,13 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
         isPhonePublic: isPhonePublic,
       );
 
-      if (displayName != null && displayName != user.displayName) {
-        await user.updateDisplayName(displayName);
-        await user.reload();
+      if (displayName != null) {
+        final supabase = Supabase.instance.client;
+        await supabase.auth.updateUser(
+          UserAttributes(
+            data: {'display_name': displayName},
+          ),
+        );
       }
 
       await loadProfile();
@@ -129,7 +150,7 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
 
     try {
       await profileRepository.setProfilePublic(
-        uid: user.uid,
+        uid: user.id,
         isPublic: isPublic,
       );
       await loadProfile();

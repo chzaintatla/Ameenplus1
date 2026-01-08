@@ -1,4 +1,4 @@
-import 'package:geolocator/geolocator.dart';
+﻿import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -49,7 +49,9 @@ class PrayerTimeService {
         longitude = double.parse(parts[1]);
       } else {
         try {
-          final position = await Geolocator.getCurrentPosition();
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+          );
           latitude = position.latitude;
           longitude = position.longitude;
           await prefs.setString(_prefKeyLocation, '$latitude,$longitude');
@@ -66,8 +68,8 @@ class PrayerTimeService {
 
     final now = DateTime.now();
     return _calculatePrayerTimes(
-      latitude!,
-      longitude!,
+      latitude,
+      longitude,
       now.year,
       now.month,
       now.day,

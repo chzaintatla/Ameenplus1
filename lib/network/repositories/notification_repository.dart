@@ -1,100 +1,79 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utils/app_constants.dart';
 import '../../models/notification_model.dart';
 
 class NotificationRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Get notifications stream for current user
-  Stream<List<NotificationModel>> getNotifications(String userId) {
-    return _firestore
-        .collection(AppConstants.collectionNotifications)
-        .where('userId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
-        .limit(50)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => NotificationModel.fromFirestore(doc))
-          .toList();
-    }).handleError((error, stackTrace) {
-      // Handle index building errors gracefully
-      // The error will be caught by the StreamProvider
-    });
-  }
-
-  /// Mark notification as read
-  Future<void> markAsRead(String notificationId) async {
-    await _firestore
-        .collection(AppConstants.collectionNotifications)
-        .doc(notificationId)
-        .update({'read': true, 'readAt': FieldValue.serverTimestamp()});
-  }
-
-  /// Mark all notifications as read
-  Future<void> markAllAsRead(String userId) async {
-    final batch = _firestore.batch();
-    final notifications = await _firestore
-        .collection(AppConstants.collectionNotifications)
-        .where('userId', isEqualTo: userId)
-        .where('read', isEqualTo: false)
-        .get();
-
-    for (var doc in notifications.docs) {
-      batch.update(doc.reference, {
-        'read': true,
-        'readAt': FieldValue.serverTimestamp(),
-      });
-    }
-
-    await batch.commit();
-  }
-
-  /// Get unread count
-  Stream<int> getUnreadCount(String userId) {
-    return _firestore
-        .collection(AppConstants.collectionNotifications)
-        .where('userId', isEqualTo: userId)
-        .where('read', isEqualTo: false)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.length);
-  }
-
-  /// Create a notification
   Future<void> createNotification({
     required String userId,
     required String type,
     required String title,
-    required String body,
+    String? body,
     String? actionId,
-    Map<String, dynamic>? data,
   }) async {
-    final notification = NotificationModel(
-      id: '',
-      userId: userId,
-      type: type,
-      title: title,
-      body: body,
-      actionId: actionId,
-      data: data,
-      read: false,
-      createdAt: DateTime.now(),
-    );
-
-    await _firestore
-        .collection(AppConstants.collectionNotifications)
-        .add(notification.toFirestore());
+    try {
+      await _supabase.from(AppConstants.collectionNotifications).insert({
+        'user_id': userId,
+        'type': type,
+        'title': title,
+        'body': body,
+        'action_id': actionId,
+        'read': false,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      // Silently fail
+    }
   }
 
-  /// Delete a notification
+  Stream<List<NotificationModel>> getUserNotifications(String userId) {
+    return _supabase
+        .from(AppConstants.collectionNotifications)
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(50)
+        .map((data) => data.map((item) => NotificationModel.fromMap(item)).toList());
+  }
+
+  Future<void> markAsRead(String notificationId) async {
+    await _supabase
+        .from(AppConstants.collectionNotifications)
+        .update({'read': true})
+        .eq('id', notificationId);
+  }
+
+  Future<void> markAllAsRead(String userId) async {
+    await _supabase
+        .from(AppConstants.collectionNotifications)
+        .update({'read': true})
+        .eq('user_id', userId)
+        .eq('read', false);
+  }
+
+  Future<int> getUnreadCount(String userId) async {
+    final response = await _supabase
+        .from(AppConstants.collectionNotifications)
+        .select('id')
+        .eq('user_id', userId)
+        .eq('read', false);
+    
+    return response.length;
+  }
+
+  Stream<int> watchUnreadCount(String userId) {
+    return _supabase
+        .from(AppConstants.collectionNotifications)
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .map((data) => data.where((item) => item['read'] == false).length);
+  }
+
   Future<void> deleteNotification(String notificationId) async {
-    await _firestore
-        .collection(AppConstants.collectionNotifications)
-        .doc(notificationId)
-        .delete();
+    await _supabase
+        .from(AppConstants.collectionNotifications)
+        .delete()
+        .eq('id', notificationId);
   }
 }
-

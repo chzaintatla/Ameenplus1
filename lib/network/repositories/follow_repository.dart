@@ -1,95 +1,103 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../utils/app_constants.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FollowRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  Future<void> followUser({
-    required String followerId,
-    required String followingId,
-  }) async {
-    if (followerId == followingId) {
-      throw Exception('Cannot follow yourself');
-    }
-
-    await _firestore.collection('follows').doc('$followerId-$followingId').set({
-      'followerId': followerId,
-      'followingId': followingId,
-      'createdAt': FieldValue.serverTimestamp(),
+  Future<void> followUser(String followerId, String followingId) async {
+    await _supabase.from('follows').insert({
+      'follower_id': followerId,
+      'following_id': followingId,
+      'created_at': DateTime.now().toIso8601String(),
     });
-
-    await Future.wait([
-      _firestore.collection(AppConstants.collectionUsers).doc(followerId).update({
-        'followingCount': FieldValue.increment(1),
-      }),
-      _firestore.collection(AppConstants.collectionUsers).doc(followingId).update({
-        'followersCount': FieldValue.increment(1),
-      }),
-    ]);
   }
 
-  Future<void> unfollowUser({
-    required String followerId,
-    required String followingId,
-  }) async {
-    await _firestore.collection('follows').doc('$followerId-$followingId').delete();
-
-    await Future.wait([
-      _firestore.collection(AppConstants.collectionUsers).doc(followerId).update({
-        'followingCount': FieldValue.increment(-1),
-      }),
-      _firestore.collection(AppConstants.collectionUsers).doc(followingId).update({
-        'followersCount': FieldValue.increment(-1),
-      }),
-    ]);
+  Future<void> unfollowUser(String followerId, String followingId) async {
+    await _supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', followerId)
+        .eq('following_id', followingId);
   }
 
-  Future<bool> isFollowing({
-    required String followerId,
-    required String followingId,
-  }) async {
-    final doc = await _firestore.collection('follows').doc('$followerId-$followingId').get();
-    return doc.exists;
+  Stream<bool> watchIsFollowing(String followerId, String followingId) {
+    return _supabase
+        .from('follows')
+        .stream(primaryKey: ['id'])
+        .eq('following_id', followingId)
+        .map((data) => data.any((item) => item['follower_id'] == followerId));
   }
 
-  Stream<bool> watchIsFollowing({
-    required String followerId,
-    required String followingId,
-  }) {
-    return _firestore
-        .collection('follows')
-        .doc('$followerId-$followingId')
-        .snapshots()
-        .map((doc) => doc.exists);
+  Future<bool> isFollowing(String followerId, String followingId) async {
+    final data = await _supabase
+        .from('follows')
+        .select()
+        .eq('follower_id', followerId)
+        .eq('following_id', followingId)
+        .maybeSingle();
+
+    return data != null;
   }
 
-  Stream<List<String>> getFollowers(String userId) {
-    return _firestore
-        .collection('follows')
-        .where('followingId', isEqualTo: userId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => doc.data()['followerId'] as String)
-            .toList());
+  Stream<List<Map<String, dynamic>>> watchFollowers(String userId) {
+    return _supabase
+        .from('follows')
+        .stream(primaryKey: ['id'])
+        .eq('following_id', userId)
+        .asyncMap((data) async {
+          if (data.isEmpty) return [];
+          
+          final followerIds = data.map((item) => item['follower_id'] as String).toList();
+          final usersData = await _supabase
+              .from('users')
+              .select('id, display_name, photo_url, email, is_email_public')
+              .filter('id', 'in', followerIds);
+          
+          return List<Map<String, dynamic>>.from(usersData);
+        });
   }
 
-  Stream<List<String>> getFollowing(String userId) {
-    return _firestore
-        .collection('follows')
-        .where('followerId', isEqualTo: userId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => doc.data()['followingId'] as String)
-            .toList());
+  Stream<List<Map<String, dynamic>>> watchFollowing(String userId) {
+    return _supabase
+        .from('follows')
+        .stream(primaryKey: ['id'])
+        .eq('follower_id', userId)
+        .asyncMap((data) async {
+          if (data.isEmpty) return [];
+          
+          final followingIds = data.map((item) => item['following_id'] as String).toList();
+          final usersData = await _supabase
+              .from('users')
+              .select('id, display_name, photo_url, email, is_email_public')
+              .filter('id', 'in', followingIds);
+          
+          return List<Map<String, dynamic>>.from(usersData);
+        });
   }
 
+  Future<int> getFollowerCount(String userId) async {
+    final response = await _supabase
+        .from('follows')
+        .select('id')
+        .eq('following_id', userId);
+    
+    return response.length;
+  }
+
+  Future<int> getFollowingCount(String userId) async {
+    final response = await _supabase
+        .from('follows')
+        .select('id')
+        .eq('follower_id', userId);
+    
+    return response.length;
+  }
+
+  // Helper for backward compatibility if needed by some providers
   Future<Map<String, dynamic>?> getUserData(String userId) async {
-    final doc = await _firestore
-        .collection(AppConstants.collectionUsers)
-        .doc(userId)
-        .get();
-    if (!doc.exists) return null;
-    return doc.data();
+    return await _supabase
+        .from('users')
+        .select('id, display_name, photo_url, email, is_email_public')
+        .eq('id', userId)
+        .maybeSingle();
   }
 }
-

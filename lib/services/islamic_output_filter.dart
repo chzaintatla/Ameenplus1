@@ -1,4 +1,4 @@
-/// Output Filter Service - Post-filter to validate AI responses
+﻿/// Output Filter Service - Post-filter to validate AI responses
 /// for Islamic authenticity and safety
 class IslamicOutputFilter {
   /// Validate if AI response is Islamically authentic

@@ -1,163 +1,146 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
-
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utils/app_constants.dart';
-import '../../utils/xp_service.dart';
-import 'notification_repository.dart';
 import '../../models/comment_model.dart';
+import 'notification_repository.dart';
 
-/// Repository for managing comments on deeds
 class CommentsRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final XPService _xpService = XPService();
+  final SupabaseClient _supabase = Supabase.instance.client;
   final NotificationRepository _notificationRepo = NotificationRepository();
 
-  /// Add a comment to a deed
-  Future<CommentModel> addComment({
+  Future<void> addComment({
     required String deedId,
     required String userId,
     required String userName,
     String? userPhotoUrl,
     required String content,
   }) async {
-    try {
-      final comment = CommentModel(
-        id: const Uuid().v4(),
-        deedId: deedId,
-        userId: userId,
-        userName: userName,
-        userPhotoUrl: userPhotoUrl,
-        content: content,
-        createdAt: DateTime.now(),
-      );
+    await _supabase.from(AppConstants.collectionComments).insert({
+      'deed_id': deedId,
+      'user_id': userId,
+      'user_name': userName,
+      'user_photo_url': userPhotoUrl,
+      'content': content,
+      'likes': [],
+      'created_at': DateTime.now().toIso8601String(),
+    });
 
-      // Save comment
-      await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .collection('comments')
-          .doc(comment.id)
-          .set(comment.toFirestore());
+    // Update comment count on deed
+    final deedData = await _supabase
+        .from(AppConstants.collectionDeeds)
+        .select('comments_count, user_id')
+        .eq('id', deedId)
+        .maybeSingle();
 
-      // Update comment count on deed
-      await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .update({
-        'commentsCount': FieldValue.increment(1),
-      });
+    if (deedData != null) {
+      final currentCount = (deedData['comments_count'] as num?)?.toInt() ?? 0;
+      await _supabase
+          .from(AppConstants.collectionDeeds)
+          .update({'comments_count': currentCount + 1})
+          .eq('id', deedId);
 
-      // Award XP for commenting
-      await _xpService.awardXPForComment(userId);
+      // Notify deed owner
+      final ownerId = deedData['user_id'];
+      if (ownerId != userId) {
+        await _notificationRepo.createNotification(
+          userId: ownerId,
+          type: 'deed_comment',
+          title: 'New Comment',
+          body: '$userName commented on your post',
+          actionId: deedId,
+        );
+      }
+    }
+  }
 
-      // Send notification to deed owner
-      final deedDoc = await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .get();
-      
-      if (deedDoc.exists) {
-        final deedData = deedDoc.data()!;
-        final deedOwnerId = deedData['userId'] as String;
-        
-        if (deedOwnerId != userId) {
+  Stream<List<CommentModel>> getComments(String deedId) {
+    return _supabase
+        .from(AppConstants.collectionComments)
+        .stream(primaryKey: ['id'])
+        .eq('deed_id', deedId)
+        .order('created_at', ascending: true)
+        .map((data) => data.map((item) => CommentModel.fromMap(item)).toList());
+  }
+
+  Future<void> deleteComment(String commentId, String userId) async {
+    final commentData = await _supabase
+        .from(AppConstants.collectionComments)
+        .select()
+        .eq('id', commentId)
+        .maybeSingle();
+
+    if (commentData == null || (commentData['user_id'] ?? commentData['userId']) != userId) {
+      throw Exception('Unauthorized');
+    }
+
+    await _supabase
+        .from(AppConstants.collectionComments)
+        .delete()
+        .eq('id', commentId);
+
+    // Update comment count
+    final deedId = commentData['deed_id'] ?? commentData['deedId'];
+    final deedData = await _supabase
+        .from(AppConstants.collectionDeeds)
+        .select('comments_count')
+        .eq('id', deedId)
+        .maybeSingle();
+
+    if (deedData != null) {
+      final currentCount = (deedData['comments_count'] as num?)?.toInt() ?? 0;
+      await _supabase
+          .from(AppConstants.collectionDeeds)
+          .update({'comments_count': (currentCount - 1).clamp(0, 999999)})
+          .eq('id', deedId);
+    }
+  }
+
+  Future<void> likeComment(String commentId, String userId) async {
+    final commentData = await _supabase
+        .from(AppConstants.collectionComments)
+        .select('likes, user_id, deed_id')
+        .eq('id', commentId)
+        .maybeSingle();
+
+    if (commentData != null) {
+      final likes = List<String>.from(commentData['likes'] ?? []);
+      if (!likes.contains(userId)) {
+        likes.add(userId);
+        await _supabase
+            .from(AppConstants.collectionComments)
+            .update({'likes': likes})
+            .eq('id', commentId);
+
+        // Notify comment owner
+        final ownerId = commentData['user_id'];
+        if (ownerId != userId) {
           await _notificationRepo.createNotification(
-            userId: deedOwnerId,
-            type: 'deed_comment',
-            title: 'New Comment',
-            body: '$userName commented on your deed',
-            actionId: deedId,
+            userId: ownerId,
+            type: 'comment_like',
+            title: 'Comment Liked',
+            body: 'Someone liked your comment',
+            actionId: commentData['deed_id'],
           );
         }
       }
-
-      return comment;
-    } catch (e) {
-      throw Exception('Failed to add comment: $e');
     }
   }
 
-  /// Get comments for a deed
-  Stream<List<CommentModel>> getComments(String deedId, {int limit = 10}) {
-    return _firestore
-        .collection(AppConstants.collectionDeeds)
-        .doc(deedId)
-        .collection('comments')
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => CommentModel.fromFirestore(doc))
-          .toList();
-    });
-  }
+  Future<void> unlikeComment(String commentId, String userId) async {
+    final commentData = await _supabase
+        .from(AppConstants.collectionComments)
+        .select('likes')
+        .eq('id', commentId)
+        .maybeSingle();
 
-  /// Delete a comment
-  Future<void> deleteComment(String deedId, String commentId, String userId) async {
-    try {
-      final commentDoc = await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .collection('comments')
-          .doc(commentId)
-          .get();
-
-      if (!commentDoc.exists) {
-        throw Exception('Comment not found');
+    if (commentData != null) {
+      final likes = List<String>.from(commentData['likes'] ?? []);
+      if (likes.contains(userId)) {
+        likes.remove(userId);
+        await _supabase
+            .from(AppConstants.collectionComments)
+            .update({'likes': likes})
+            .eq('id', commentId);
       }
-
-      final data = commentDoc.data()!;
-      if (data['userId'] != userId) {
-        throw Exception('Not authorized to delete this comment');
-      }
-
-      await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .collection('comments')
-          .doc(commentId)
-          .delete();
-
-      // Decrement comment count
-      await _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .update({
-        'commentsCount': FieldValue.increment(-1),
-      });
-    } catch (e) {
-      throw Exception('Failed to delete comment: $e');
-    }
-  }
-
-  /// Like a comment
-  Future<void> likeComment(String deedId, String commentId, String userId) async {
-    try {
-      final commentRef = _firestore
-          .collection(AppConstants.collectionDeeds)
-          .doc(deedId)
-          .collection('comments')
-          .doc(commentId);
-
-      await _firestore.runTransaction((transaction) async {
-        final commentDoc = await transaction.get(commentRef);
-        if (!commentDoc.exists) return;
-
-        final data = commentDoc.data()!;
-        final likes = List<String>.from(data['likes'] ?? []);
-
-        if (likes.contains(userId)) {
-          likes.remove(userId);
-        } else {
-          likes.add(userId);
-        }
-
-        transaction.update(commentRef, {'likes': likes});
-      });
-    } catch (e) {
-      throw Exception('Failed to like comment: $e');
     }
   }
 }
-

@@ -1,4 +1,4 @@
-import 'package:geolocator/geolocator.dart' as geo;
+﻿import 'package:geolocator/geolocator.dart' as geo;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -62,7 +62,7 @@ class AccuratePrayerTimeService {
       } else {
         try {
           final position = await geo.Geolocator.getCurrentPosition(
-            desiredAccuracy: geo.LocationAccuracy.high,
+            locationSettings: const geo.LocationSettings(accuracy: geo.LocationAccuracy.high),
           );
           latitude = position.latitude;
           longitude = position.longitude;
@@ -81,7 +81,7 @@ class AccuratePrayerTimeService {
     highLatitudeMethod ??= prefs.getString(_prefKeyHighLatitude) ?? highLatitudeTwilight;
     date ??= DateTime.now();
 
-    final coordinates = Coordinates(latitude!, longitude!);
+    final coordinates = Coordinates(latitude, longitude);
     final params = _getCalculationParameters(calculationMethod, asrMethod: asrMethod);
     params.highLatitudeRule = _getHighLatitudeRule(highLatitudeMethod);
 
@@ -91,13 +91,12 @@ class AccuratePrayerTimeService {
       calculationParameters: params,
     );
 
-    // Convert UTC times to local time
     return {
-      'Fajr': prayerTimes.fajr!.toLocal(),
-      'Dhuhr': prayerTimes.dhuhr!.toLocal(),
-      'Asr': prayerTimes.asr!.toLocal(),
-      'Maghrib': prayerTimes.maghrib!.toLocal(),
-      'Isha': prayerTimes.isha!.toLocal(),
+      'Fajr': prayerTimes.fajr.toLocal(),
+      'Dhuhr': prayerTimes.dhuhr.toLocal(),
+      'Asr': prayerTimes.asr.toLocal(),
+      'Maghrib': prayerTimes.maghrib.toLocal(),
+      'Isha': prayerTimes.isha.toLocal(),
     };
   }
 
@@ -235,12 +234,12 @@ class AccuratePrayerTimeService {
   Future<geo.LocationAccuracy> validateLocationAccuracy() async {
     try {
       final position = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.high,
+        locationSettings: const geo.LocationSettings(accuracy: geo.LocationAccuracy.high),
       );
       
-      if (position.accuracy != null && position.accuracy! < 50) {
+      if (position.accuracy < 50) {
         return geo.LocationAccuracy.high;
-      } else if (position.accuracy != null && position.accuracy! < 100) {
+      } else if (position.accuracy < 100) {
         return geo.LocationAccuracy.medium;
       } else {
         return geo.LocationAccuracy.low;

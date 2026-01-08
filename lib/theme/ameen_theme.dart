@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Enhanced Islamic Theme for Ameen+ with modern, premium design
@@ -27,7 +27,7 @@ class AmeenTheme {
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color darkBackground = Color(0xFF0A1F1A);
   static const Color darkSurface = Color(0xFF1A2F2A);
-  static const Color darkSurfaceVariant = Color(0xFF243530);
+  static const Color darksurfaceContainerHighest = Color(0xFF243530);
   
   // Text Colors
   static const Color textPrimary = Color(0xFF1A1A1A);
@@ -424,7 +424,7 @@ class AmeenTheme {
       // Input Decoration
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: darkSurfaceVariant,
+        fillColor: darksurfaceContainerHighest,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -586,7 +586,7 @@ class AmeenTheme {
       
       // Snackbar
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: darkSurfaceVariant,
+        backgroundColor: darksurfaceContainerHighest,
         contentTextStyle: GoogleFonts.inter(
           fontSize: 14,
           color: textOnDark,

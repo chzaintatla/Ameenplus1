@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import '../../providers/auth_providers.dart';
@@ -73,7 +73,7 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
       final user = ref.read(authStateProvider).value;
       if (user != null) {
         final pointsService = PointsService();
-        await pointsService.addTasbihPoints(userId: user.uid, count: 100);
+        await pointsService.addTasbihPoints(user.id, 100);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -221,7 +221,7 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                pointsEarned.toStringAsFixed(1),
+                                pointsEarned.toString(),
                                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
@@ -289,4 +289,3 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
     );
   }
 }
-

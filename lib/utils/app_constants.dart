@@ -1,11 +1,12 @@
-class AppConstants {
+﻿class AppConstants {
   AppConstants._();
 
   static const String appName = 'Ameen+';
   static const String appVersion = '1.0.0';
   static const String appDescription = 'Your Islamic Companion';
 
-  static const String firebaseApiKey = 'YOUR_FIREBASE_API_KEY';
+  static const String supabaseUrl = 'https://drvzadcgkfranrcmaixs.supabase.co';
+  static const String supabaseAnonKey = '...'; // Add your anon key here
 
   static const String localDatabaseName = 'ameen_local.db';
   static const int localDatabaseVersion = 2;
@@ -136,9 +137,13 @@ class AppConstants {
   static const String collectionChats = 'chats';
   static const String collectionMessages = 'messages';
   static const String collectionFriendRequests = 'friend_requests';
+  static const String collectionFriends = 'friends';
+  static const String collectionComments = 'comments';
   static const String collectionNotifications = 'notifications';
   static const String collectionLeaderboard = 'leaderboard';
   static const String collectionBadges = 'badges';
+  static const String collectionFollows = 'follows';
+
 
   static const String routeSplash = '/';
   static const String routeOnboarding = '/onboarding';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
@@ -84,7 +84,7 @@ class FeedPage extends ConsumerWidget {
                       ),
                       child: DeedCard(
                         deed: deed,
-                        currentUserId: currentUser.value?.uid,
+                        currentUserId: currentUser.value?.id,
                         onTap: () {},
                         onComment: () {},
                       ),
@@ -164,10 +164,10 @@ class _CreatePostCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: mediaQuery.size.width * 0.06,
-                backgroundImage: currentUser?.photoURL != null
-                    ? NetworkImage(currentUser!.photoURL!)
+                backgroundImage: currentUser?.userMetadata?['avatar_url'] != null
+                    ? NetworkImage(currentUser!.userMetadata!['avatar_url'] as String)
                     : null,
-                child: currentUser?.photoURL == null
+                child: currentUser?.userMetadata?['avatar_url'] == null
                     ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
                     : null,
               ),

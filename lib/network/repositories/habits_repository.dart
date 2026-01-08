@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/app_database.dart';
@@ -7,7 +7,7 @@ import '../../utils/points_service.dart';
 import '../../models/habit_model.dart';
 
 class HabitsRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   final AppDatabase _localDb = AppDatabase.instance;
   final XPService _xpService = XPService();
   final PointsService _pointsService = PointsService();
@@ -39,11 +39,11 @@ class HabitsRepository {
       );
 
       try {
-        await _firestore
-            .collection(AppConstants.collectionHabits)
-            .doc(habit.id)
-            .set(habit.toFirestore());
+        await _supabase
+            .from(AppConstants.collectionHabits)
+            .insert(habit.toMap());
       } catch (e) {
+        // Silently fail if Supabase insert fails, will sync later
       }
 
       await _localDb.insertHabit(habit.toLocal());
@@ -56,18 +56,18 @@ class HabitsRepository {
 
   Stream<List<HabitModel>> getUserHabits(String userId) {
     try {
-      return _firestore
-          .collection(AppConstants.collectionHabits)
-          .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .snapshots()
-          .asyncMap((snapshot) async {
-        final firestoreHabits = snapshot.docs
-            .map((doc) => HabitModel.fromFirestore(doc))
+      return _supabase
+          .from(AppConstants.collectionHabits)
+          .stream(primaryKey: ['id'])
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .asyncMap((data) async {
+        final supabaseHabits = data
+            .map((item) => HabitModel.fromMap(item))
             .toList();
 
         final filteredHabits = <HabitModel>[];
-        for (var habit in firestoreHabits) {
+        for (var habit in supabaseHabits) {
           if (habit.shouldBeRemoved) {
             await deleteHabit(habit.id, userId);
           } else {
@@ -79,11 +79,11 @@ class HabitsRepository {
           final localHabits = await getLocalHabits(userId);
           final localHabitMap = {for (var h in localHabits) h.id: h};
 
-          for (var firestoreHabit in filteredHabits) {
-            if (!localHabitMap.containsKey(firestoreHabit.id) ||
-                localHabitMap[firestoreHabit.id]!.syncStatus) {
-              localHabitMap[firestoreHabit.id] = firestoreHabit;
-              await _localDb.insertHabit(firestoreHabit.toLocal());
+          for (var supabaseHabit in filteredHabits) {
+            if (!localHabitMap.containsKey(supabaseHabit.id) ||
+                localHabitMap[supabaseHabit.id]!.syncStatus) {
+              localHabitMap[supabaseHabit.id] = supabaseHabit;
+              await _localDb.insertHabit(supabaseHabit.toLocal());
             }
           }
 
@@ -117,31 +117,37 @@ class HabitsRepository {
       HabitModel? updatedHabit;
 
       try {
-        final habitRef = _firestore
-            .collection(AppConstants.collectionHabits)
-            .doc(habitId);
+        // Get current habit
+        final habitData = await _supabase
+            .from(AppConstants.collectionHabits)
+            .select()
+            .eq('id', habitId)
+            .maybeSingle();
 
-        await _firestore.runTransaction((transaction) async {
-          final habitDoc = await transaction.get(habitRef);
-          if (!habitDoc.exists) return;
+        if (habitData == null) {
+          throw Exception('Habit not found');
+        }
 
-          final habit = HabitModel.fromFirestore(habitDoc);
+        final habit = HabitModel.fromMap(habitData);
 
-          if (habit.isCompletedToday) {
-            throw Exception('Habit already completed today');
-          }
+        if (habit.isCompletedToday) {
+          throw Exception('Habit already completed today');
+        }
 
-          updatedHabit = habit.markCompleted(value: value);
+        updatedHabit = habit.markCompleted(value: value);
 
-          transaction.update(habitRef, updatedHabit!.toFirestore());
+        // Update in Supabase
+        await _supabase
+            .from(AppConstants.collectionHabits)
+            .update(updatedHabit.toMap())
+            .eq('id', habitId);
 
-          await _localDb.insertHabitCompletion({
-            'id': const Uuid().v4(),
-            'habitId': habitId,
-            'completedAt': DateTime.now().toIso8601String(),
-            'value': value,
-            'syncStatus': 0,
-          });
+        await _localDb.insertHabitCompletion({
+          'id': const Uuid().v4(),
+          'habitId': habitId,
+          'completedAt': DateTime.now().toIso8601String(),
+          'value': value,
+          'syncStatus': 0,
         });
       } catch (e) {
         if (e.toString().contains('already completed')) {
@@ -158,40 +164,35 @@ class HabitsRepository {
         updatedHabit = habit.markCompleted(value: value);
       }
 
-      if (updatedHabit != null) {
-        await _localDb.updateHabit(habitId, updatedHabit!.toLocal());
+      await _localDb.updateHabit(habitId, updatedHabit!.toLocal());
 
-        if (updatedHabit!.habitType == AppConstants.habitCustom) {
-          await _xpService.awardXP(
-            userId: userId,
-            xpAmount: 1,
-            actionType: 'custom_habit_complete',
-            description: 'Completed custom habit: ${updatedHabit!.habitName}',
-          );
-          await _pointsService.addHabitPoints(
-            userId: userId,
-            points: 1.0,
-          );
-        } else {
-          await _xpService.awardXPForHabit(
-            userId,
-            streakDays: updatedHabit!.streakDays,
-          );
-        }
-
-        if (updatedHabit!.autoRemoveAfterCompletion && updatedHabit!.isCompletedToday) {
-          final now = DateTime.now();
-          final tomorrow = DateTime(now.year, now.month, now.day + 1);
-          final delay = tomorrow.difference(now);
-          Future.delayed(delay, () async {
-            await deleteHabit(habitId, userId);
-          });
-        }
+      if (updatedHabit.habitType == AppConstants.habitCustom) {
+        await _xpService.awardXP(
+          userId: userId,
+          xpAmount: 1,
+          actionType: 'custom_habit_complete',
+          description: 'Completed custom habit: ${updatedHabit.habitName}',
+        );
+        await _pointsService.addHabitPoints(
+          userId: userId,
+          points: 1.0,
+        );
+      } else {
+        await _xpService.awardXPForHabit(
+          userId,
+          streakDays: updatedHabit.streakDays,
+        );
       }
 
-      if (updatedHabit == null) {
-        throw Exception('Failed to complete habit');
+      if (updatedHabit.autoRemoveAfterCompletion && updatedHabit.isCompletedToday) {
+        final now = DateTime.now();
+        final tomorrow = DateTime(now.year, now.month, now.day + 1);
+        final delay = tomorrow.difference(now);
+        Future.delayed(delay, () async {
+          await deleteHabit(habitId, userId);
+        });
       }
+      
       return updatedHabit;
     } catch (e) {
       throw Exception('Failed to complete habit: $e');
@@ -200,11 +201,12 @@ class HabitsRepository {
 
   Future<void> deleteHabit(String habitId, String userId) async {
     try {
-      await _firestore
-          .collection(AppConstants.collectionHabits)
-          .doc(habitId)
-          .delete();
+      await _supabase
+          .from(AppConstants.collectionHabits)
+          .delete()
+          .eq('id', habitId);
     } catch (e) {
+      // Silently fail if Supabase delete fails
     }
 
     await _localDb.deleteHabit(habitId);
@@ -219,26 +221,30 @@ class HabitsRepository {
       HabitModel? updatedHabit;
 
       try {
-        final habitRef = _firestore
-            .collection(AppConstants.collectionHabits)
-            .doc(habitId);
+        final habitData = await _supabase
+            .from(AppConstants.collectionHabits)
+            .select()
+            .eq('id', habitId)
+            .maybeSingle();
 
-        await _firestore.runTransaction((transaction) async {
-          final habitDoc = await transaction.get(habitRef);
-          if (!habitDoc.exists) return;
+        if (habitData == null) {
+          throw Exception('Habit not found');
+        }
 
-          final habit = HabitModel.fromFirestore(habitDoc);
-          final clampedValue = newValue.clamp(0, habit.targetValue);
-          
-          updatedHabit = habit.copyWith(
-            currentValue: clampedValue,
-            syncStatus: false,
-          );
+        final habit = HabitModel.fromMap(habitData);
+        final clampedValue = newValue.clamp(0, habit.targetValue);
+        
+        updatedHabit = habit.copyWith(
+          currentValue: clampedValue,
+          syncStatus: false,
+        );
 
-          transaction.update(habitRef, updatedHabit!.toFirestore());
-        });
+        await _supabase
+            .from(AppConstants.collectionHabits)
+            .update(updatedHabit.toMap())
+            .eq('id', habitId);
       } catch (e) {
-        // Fallback to local database if Firebase transaction fails
+        // Fallback to local database if Supabase fails
         try {
           final localHabits = await _localDb.getHabits(userId);
           final habitData = localHabits.firstWhere(
@@ -253,7 +259,6 @@ class HabitsRepository {
             syncStatus: false,
           );
         } catch (localError) {
-          // If local fallback also fails, rethrow the original error
           throw Exception('Failed to update habit: ${e.toString()}');
         }
       }

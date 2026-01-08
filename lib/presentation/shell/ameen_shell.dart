@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,8 +12,7 @@ class AmeenShell extends ConsumerWidget {
   static const _titles = <String>[
     'Home',
     'Tools Hub',
-    'Create Post',
-    'Community',
+    '',
     'Profile',
   ];
 
@@ -46,7 +45,7 @@ class AmeenShell extends ConsumerWidget {
     final unreadCountAsync = ref.watch(unreadCountProvider);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: (actualIndex == 1 || actualIndex == 2 || actualIndex == 3) ? null : AppBar(
         title: Text(_titles[actualIndex]),
         backgroundColor: Theme.of(context).brightness == Brightness.light
             ? Colors.white
@@ -55,7 +54,7 @@ class AmeenShell extends ConsumerWidget {
             ? Colors.black
             : Colors.white,
         actions: <Widget>[
-          if (actualIndex == 0 || actualIndex == 3)
+          if (actualIndex == 0)
             Stack(
               children: [
                 IconButton(
@@ -99,13 +98,27 @@ class AmeenShell extends ConsumerWidget {
         ],
       ),
       body: navigationShell,
-      floatingActionButton: (actualIndex == 0 || actualIndex == 3) 
+      floatingActionButton: (actualIndex == 0) 
           ? FloatingActionButton(
               onPressed: () {
                 // Open AI Chatbot
                 context.push('/ai-chatbot');
               },
-              child: const Icon(Icons.chat_bubble_outline),
+              backgroundColor: Theme.of(context).brightness == Brightness.light
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.secondary,
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.mode(
+                  Colors.black87,
+                  BlendMode.srcIn,
+                ),
+                child: Image.asset(
+                  'assets/images/chatbot.png',
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.contain,
+                ),
+              ),
               tooltip: 'AI Islamic Assistant',
             )
           : null,
@@ -121,7 +134,7 @@ class AmeenShell extends ConsumerWidget {
           }
         },
         indicatorColor: Theme.of(context).brightness == Brightness.light
-            ? Colors.green.shade200
+            ? Colors.green.shade800
             : Colors.green.shade800,
         backgroundColor: Theme.of(context).brightness == Brightness.light
             ? Colors.white

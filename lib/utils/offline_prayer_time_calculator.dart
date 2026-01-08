@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:intl/intl.dart';
 
 /// Madhab enum for Asr calculation method

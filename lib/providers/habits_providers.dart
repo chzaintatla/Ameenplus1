@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../network/repositories/habits_repository.dart';
 import '../models/habit_model.dart';
@@ -16,6 +16,6 @@ final userHabitsProvider = StreamProvider<List<HabitModel>>((ref) {
     return Stream.value([]);
   }
   
-  return repository.getUserHabits(currentUser.value!.uid);
+  return repository.getUserHabits(currentUser.value!.id);
 });
 

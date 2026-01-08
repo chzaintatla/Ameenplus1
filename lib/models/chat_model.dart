@@ -1,7 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-/// Chat conversation model
-class ChatModel {
+﻿class ChatModel {
   final String id;
   final List<String> participants;
   final Map<String, dynamic>? lastMessage;
@@ -20,34 +17,41 @@ class ChatModel {
     this.updatedAt,
   });
 
-  factory ChatModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    
+  factory ChatModel.fromMap(Map<String, dynamic> data) {
     return ChatModel(
-      id: doc.id,
+      id: data['id']?.toString() ?? '',
       participants: List<String>.from(data['participants'] ?? []),
-      lastMessage: data['lastMessage'],
-      lastMessageTime: data['lastMessageTime'] != null
-          ? (data['lastMessageTime'] as Timestamp).toDate()
-          : null,
-      unreadCounts: Map<String, int>.from(data['unreadCounts'] ?? {}),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: data['updatedAt'] != null
-          ? (data['updatedAt'] as Timestamp).toDate()
-          : null,
+      lastMessage: data['last_message'] ?? data['lastMessage'],
+      lastMessageTime: data['last_message_time'] != null
+          ? (data['last_message_time'] is String
+              ? DateTime.parse(data['last_message_time'])
+              : data['last_message_time'] as DateTime?)
+          : (data['lastMessageTime'] != null
+              ? (data['lastMessageTime'] is String
+                  ? DateTime.parse(data['lastMessageTime'])
+                  : data['lastMessageTime'] as DateTime?)
+              : null),
+      unreadCounts: Map<String, int>.from(data['unread_counts'] ?? data['unreadCounts'] ?? {}),
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
+      updatedAt: data['updated_at'] != null
+          ? (data['updated_at'] is String ? DateTime.parse(data['updated_at']) : data['updated_at'] as DateTime?)
+          : (data['updatedAt'] != null 
+              ? (data['updatedAt'] is String ? DateTime.parse(data['updatedAt']) : data['updatedAt'] as DateTime?)
+              : null),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'participants': participants,
-      'lastMessage': lastMessage,
-      'lastMessageTime': lastMessageTime != null
-          ? Timestamp.fromDate(lastMessageTime!)
-          : null,
-      'unreadCounts': unreadCounts,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'last_message': lastMessage,
+      'last_message_time': lastMessageTime?.toIso8601String(),
+      'unread_counts': unreadCounts,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
     };
   }
 
@@ -60,7 +64,6 @@ class ChatModel {
   }
 }
 
-/// Message model
 class MessageModel {
   final String id;
   final String chatId;
@@ -68,9 +71,9 @@ class MessageModel {
   final String senderName;
   final String? senderPhotoUrl;
   final String content;
-  final String type; // text, image, voice, dua, islamic_card
+  final String type;
   final String? mediaUrl;
-  final Map<String, dynamic>? metadata; // For extra data like dua text, card info
+  final Map<String, dynamic>? metadata;
   final bool read;
   final DateTime timestamp;
 
@@ -88,36 +91,37 @@ class MessageModel {
     required this.timestamp,
   });
 
-  factory MessageModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    
+  factory MessageModel.fromMap(Map<String, dynamic> data) {
     return MessageModel(
-      id: doc.id,
-      chatId: data['chatId'] ?? '',
-      senderId: data['senderId'] ?? '',
-      senderName: data['senderName'] ?? 'Anonymous',
-      senderPhotoUrl: data['senderPhotoUrl'],
+      id: data['id']?.toString() ?? '',
+      chatId: data['chat_id'] ?? data['chatId'] ?? '',
+      senderId: data['sender_id'] ?? data['senderId'] ?? '',
+      senderName: data['sender_name'] ?? data['senderName'] ?? 'Anonymous',
+      senderPhotoUrl: data['sender_photo_url'] ?? data['senderPhotoUrl'],
       content: data['content'] ?? '',
       type: data['type'] ?? 'text',
-      mediaUrl: data['mediaUrl'],
+      mediaUrl: data['media_url'] ?? data['mediaUrl'],
       metadata: data['metadata'],
       read: data['read'] ?? false,
-      timestamp: (data['timestamp'] as Timestamp).toDate(),
+      timestamp: data['timestamp'] != null
+          ? (data['timestamp'] is String ? DateTime.parse(data['timestamp']) : data['timestamp'] as DateTime)
+          : DateTime.now(),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
-      'chatId': chatId,
-      'senderId': senderId,
-      'senderName': senderName,
-      'senderPhotoUrl': senderPhotoUrl,
+      'id': id,
+      'chat_id': chatId,
+      'sender_id': senderId,
+      'sender_name': senderName,
+      'sender_photo_url': senderPhotoUrl,
       'content': content,
       'type': type,
-      'mediaUrl': mediaUrl,
+      'media_url': mediaUrl,
       'metadata': metadata,
       'read': read,
-      'timestamp': Timestamp.fromDate(timestamp),
+      'timestamp': timestamp.toIso8601String(),
     };
   }
 

@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/moderation_service.dart';
 
 final moderationServiceProvider = Provider<ModerationService>((ref) {
@@ -9,4 +9,3 @@ final moderationStatusProvider = FutureProvider.family<ModerationStatus, String>
   final service = ref.read(moderationServiceProvider);
   return await service.getModerationStatus(userId);
 });
-

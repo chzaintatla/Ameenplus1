@@ -34,13 +34,11 @@ dependencies:
   # Core
   cupertino_icons: ^1.0.8
 
-  # Firebase Suite
-  firebase_core: ^3.6.0
-  firebase_auth: ^5.3.1
-  cloud_firestore: ^5.5.0
-  firebase_storage: ^12.3.0
-  firebase_messaging: ^15.1.5
-  firebase_analytics: ^11.3.5
+  # Supabase Suite
+  supabase_flutter: ^2.8.0
+  
+  # For analytics (optional - can use PostHog or other analytics)
+  # firebase_analytics: ^11.3.5  # Keep if you still want Firebase Analytics
 
   # State Management & Navigation
   flutter_riverpod: ^2.6.1

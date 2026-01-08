@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_providers.dart';
@@ -57,7 +57,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
               if (currentUser != null)
                 TextButton.icon(
                   onPressed: () {
-                    _showAddHabitDialog(context, ref, currentUser.uid);
+                    _showAddHabitDialog(context, ref, currentUser.id);
                   },
                   icon: const Icon(Icons.add),
                   label: const Text('Add Habit'),
@@ -65,7 +65,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
             ],
           ),
           const SizedBox(height: 12),
-          if (currentUser != null) _buildNamazTracker(context, currentUser.uid),
+          if (currentUser != null) _buildNamazTracker(context, currentUser.id),
           const SizedBox(height: 12),
           habitsAsync.when(
             data: (habits) {
@@ -97,7 +97,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           onPressed: () {
-                            _showAddHabitDialog(context, ref, currentUser!.uid);
+                            _showAddHabitDialog(context, ref, currentUser!.id);
                           },
                           icon: const Icon(Icons.add),
                           label: const Text('Add Your First Habit'),
@@ -155,7 +155,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                           try {
                             await ref.read(habitsRepositoryProvider).deleteHabit(
                               habit.id,
-                              currentUser.uid,
+                              currentUser.id,
                             );
                             ref.invalidate(userHabitsProvider);
                             if (context.mounted) {
@@ -178,7 +178,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                           }
                         }
                       },
-                      child: _buildHabitCard(context, ref, habit, currentUser?.uid),
+                      child: _buildHabitCard(context, ref, habit, currentUser?.id),
                     ),
                   );
                 }).toList(),
@@ -453,7 +453,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '🔥 Habit Streak',
+                'ðŸ”¥ Habit Streak',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -685,33 +685,33 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
   String _getHabitEmoji(String habitType) {
     switch (habitType) {
       case AppConstants.habitSalah:
-        return '🕌';
+        return 'ðŸ•Œ';
       case AppConstants.habitQuran:
-        return '📖';
+        return 'ðŸ“–';
       case AppConstants.habitTasbeeh:
-        return '📿';
+        return 'ðŸ“¿';
       case AppConstants.habitDua:
-        return '🤲';
+        return 'ðŸ¤²';
       case AppConstants.habitTahajjud:
-        return '🌟';
+        return 'ðŸŒŸ';
       case AppConstants.habitZikr:
-        return '💚';
+        return 'ðŸ’š';
       case AppConstants.habitSadaqah:
-        return '💝';
+        return 'ðŸ’';
       case AppConstants.habitCharity:
-        return '❤️';
+        return 'â¤ï¸';
       case AppConstants.habitFasting:
-        return '🌙';
+        return 'ðŸŒ™';
       case AppConstants.habitLearning:
-        return '📚';
+        return 'ðŸ“š';
       case AppConstants.habitGratitude:
-        return '🙏';
+        return 'ðŸ™';
       case AppConstants.habitPatience:
-        return '⏳';
+        return 'â³';
       case AppConstants.habitKindness:
-        return '🤝';
+        return 'ðŸ¤';
       default:
-        return '✨';
+        return 'âœ¨';
     }
   }
 
@@ -838,16 +838,16 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
     final autoRemoveNotifier = ValueNotifier<bool>(false);
 
     final predefinedHabits = [
-      {'type': AppConstants.habitSalah, 'name': 'Daily Salah', 'icon': '🕌'},
-      {'type': AppConstants.habitQuran, 'name': 'Quran Reading', 'icon': '📖'},
-      {'type': AppConstants.habitDua, 'name': 'Morning Dua', 'icon': '🤲'},
-      {'type': AppConstants.habitTasbeeh, 'name': 'Tasbeeh', 'icon': '📿'},
-      {'type': AppConstants.habitTahajjud, 'name': 'Tahajjud Prayer', 'icon': '🌟'},
-      {'type': AppConstants.habitZikr, 'name': 'Zikr', 'icon': '💚'},
-      {'type': AppConstants.habitSadaqah, 'name': 'Sadaqah', 'icon': '💝'},
-      {'type': AppConstants.habitFasting, 'name': 'Fasting', 'icon': '🌙'},
-      {'type': AppConstants.habitGratitude, 'name': 'Gratitude', 'icon': '🙏'},
-      {'type': AppConstants.habitKindness, 'name': 'Acts of Kindness', 'icon': '🤝'},
+      {'type': AppConstants.habitSalah, 'name': 'Daily Salah', 'icon': 'ðŸ•Œ'},
+      {'type': AppConstants.habitQuran, 'name': 'Quran Reading', 'icon': 'ðŸ“–'},
+      {'type': AppConstants.habitDua, 'name': 'Morning Dua', 'icon': 'ðŸ¤²'},
+      {'type': AppConstants.habitTasbeeh, 'name': 'Tasbeeh', 'icon': 'ðŸ“¿'},
+      {'type': AppConstants.habitTahajjud, 'name': 'Tahajjud Prayer', 'icon': 'ðŸŒŸ'},
+      {'type': AppConstants.habitZikr, 'name': 'Zikr', 'icon': 'ðŸ’š'},
+      {'type': AppConstants.habitSadaqah, 'name': 'Sadaqah', 'icon': 'ðŸ’'},
+      {'type': AppConstants.habitFasting, 'name': 'Fasting', 'icon': 'ðŸŒ™'},
+      {'type': AppConstants.habitGratitude, 'name': 'Gratitude', 'icon': 'ðŸ™'},
+      {'type': AppConstants.habitKindness, 'name': 'Acts of Kindness', 'icon': 'ðŸ¤'},
     ];
 
     showDialog(
@@ -893,7 +893,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? Theme.of(context).colorScheme.primaryContainer
-                                        : Theme.of(context).colorScheme.surfaceVariant,
+                                        : Theme.of(context).colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
                                       color: isSelected
@@ -940,59 +940,59 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                             items: [
                               DropdownMenuItem(
                                 value: AppConstants.habitSalah,
-                                child: const Text('🕌 Salah'),
+                                child: const Text('ðŸ•Œ Salah'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitQuran,
-                                child: const Text('📖 Quran Reading'),
+                                child: const Text('ðŸ“– Quran Reading'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitTasbeeh,
-                                child: const Text('📿 Tasbeeh'),
+                                child: const Text('ðŸ“¿ Tasbeeh'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitDua,
-                                child: const Text('🤲 Dua'),
+                                child: const Text('ðŸ¤² Dua'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitTahajjud,
-                                child: const Text('🌟 Tahajjud'),
+                                child: const Text('ðŸŒŸ Tahajjud'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitZikr,
-                                child: const Text('💚 Zikr'),
+                                child: const Text('ðŸ’š Zikr'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitSadaqah,
-                                child: const Text('💝 Sadaqah'),
+                                child: const Text('ðŸ’ Sadaqah'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitCharity,
-                                child: const Text('❤️ Charity'),
+                                child: const Text('â¤ï¸ Charity'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitFasting,
-                                child: const Text('🌙 Fasting'),
+                                child: const Text('ðŸŒ™ Fasting'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitLearning,
-                                child: const Text('📚 Learning'),
+                                child: const Text('ðŸ“š Learning'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitGratitude,
-                                child: const Text('🙏 Gratitude'),
+                                child: const Text('ðŸ™ Gratitude'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitPatience,
-                                child: const Text('⏳ Patience'),
+                                child: const Text('â³ Patience'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitKindness,
-                                child: const Text('🤝 Kindness'),
+                                child: const Text('ðŸ¤ Kindness'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitCustom,
-                                child: const Text('✨ Custom'),
+                                child: const Text('âœ¨ Custom'),
                               ),
                             ],
                             onChanged: (value) {

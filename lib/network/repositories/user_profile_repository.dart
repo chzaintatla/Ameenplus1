@@ -1,8 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../firebase/firebase_ready_provider.dart';
+import '../../supabase/supabase_ready_provider.dart';
 import '../../models/user_profile.dart';
 
 abstract class UserProfileRepository {
@@ -25,70 +24,81 @@ abstract class UserProfileRepository {
   });
 }
 
-class FirebaseUserProfileRepository implements UserProfileRepository {
-  FirebaseUserProfileRepository(this._firestore);
+class SupabaseUserProfileRepository implements UserProfileRepository {
+  SupabaseUserProfileRepository(this._supabase);
 
-  final FirebaseFirestore _firestore;
-
-  DocumentReference<Map<String, Object?>> _doc(String uid) => _firestore.collection('users').doc(uid);
+  final SupabaseClient _supabase;
 
   @override
   Stream<UserProfile?> watchProfile(String uid) {
-    return _doc(uid).snapshots().map((snap) {
-      final data = snap.data();
-      if (data == null) return null;
-      return UserProfile.fromMap(snap.id, data);
-    });
+    return _supabase
+        .from('users')
+        .stream(primaryKey: ['id'])
+        .eq('id', uid)
+        .map((data) {
+          if (data.isEmpty) return null;
+          return UserProfile.fromMap(uid, data.first);
+        });
   }
 
   @override
   Future<UserProfile?> getProfile(String uid) async {
-    final doc = await _doc(uid).get();
-    final data = doc.data();
+    final data = await _supabase
+        .from('users')
+        .select()
+        .eq('id', uid)
+        .maybeSingle();
+    
     if (data == null) return null;
-    return UserProfile.fromMap(doc.id, data);
+    return UserProfile.fromMap(uid, data);
   }
 
   @override
   Future<void> ensureProfileForUser(User user) async {
-    final ref = _doc(user.uid);
-    final existing = await ref.get();
+    final existing = await _supabase
+        .from('users')
+        .select()
+        .eq('id', user.id)
+        .maybeSingle();
 
     final next = <String, Object?>{
-      'displayName': user.displayName ?? (user.isAnonymous ? 'Guest' : 'User'),
-      'photoUrl': user.photoURL,
+      'id': user.id,
+      'display_name': user.userMetadata?['display_name'] ?? 
+                     user.userMetadata?['full_name'] ?? 
+                     'User',
+      'photo_url': user.userMetadata?['avatar_url'],
       'points': 0,
-      'isProfilePublic': true,
+      'is_profile_public': true,
       'interests': <String>[],
       'email': user.email,
-      'phoneNumber': user.phoneNumber,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
+      'phone_number': user.phone,
+      'updated_at': DateTime.now().toIso8601String(),
+      'created_at': DateTime.now().toIso8601String(),
     };
 
-    if (!existing.exists) {
-      await ref.set(next);
+    if (existing == null) {
+      await _supabase.from('users').insert(next);
     } else {
-      await ref.set(
-        <String, Object?>{
-          'displayName': next['displayName'],
-          'photoUrl': next['photoUrl'],
-          'updatedAt': next['updatedAt'],
-        },
-        SetOptions(merge: true),
-      );
+      await _supabase
+          .from('users')
+          .update({
+            'display_name': next['display_name'],
+            'photo_url': next['photo_url'],
+            'updated_at': next['updated_at'],
+          })
+          .eq('id', user.id);
     }
   }
 
   @override
   Future<void> setProfilePublic({required String uid, required bool isPublic}) async {
-    await _doc(uid).set(
-      <String, Object?>{
-        'isProfilePublic': isPublic,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await _supabase
+        .from('users')
+        .update({
+          'is_profile_public': isPublic,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', uid);
   }
 
   @override
@@ -106,14 +116,14 @@ class FirebaseUserProfileRepository implements UserProfileRepository {
     bool? isPhonePublic,
   }) async {
     final updates = <String, Object?>{
-      'updatedAt': FieldValue.serverTimestamp(),
+      'updated_at': DateTime.now().toIso8601String(),
     };
 
     if (displayName != null) {
-      updates['displayName'] = displayName;
+      updates['display_name'] = displayName;
     }
     if (photoUrl != null) {
-      updates['photoUrl'] = photoUrl;
+      updates['photo_url'] = photoUrl;
     }
     if (bio != null) {
       updates['bio'] = bio;
@@ -125,7 +135,7 @@ class FirebaseUserProfileRepository implements UserProfileRepository {
       updates['email'] = email;
     }
     if (phoneNumber != null) {
-      updates['phoneNumber'] = phoneNumber;
+      updates['phone_number'] = phoneNumber;
     }
     if (age != null) {
       updates['age'] = age;
@@ -134,13 +144,16 @@ class FirebaseUserProfileRepository implements UserProfileRepository {
       updates['gender'] = gender;
     }
     if (isEmailPublic != null) {
-      updates['isEmailPublic'] = isEmailPublic;
+      updates['is_email_public'] = isEmailPublic;
     }
     if (isPhonePublic != null) {
-      updates['isPhonePublic'] = isPhonePublic;
+      updates['is_phone_public'] = isPhonePublic;
     }
 
-    await _doc(uid).set(updates, SetOptions(merge: true));
+    await _supabase
+        .from('users')
+        .update(updates)
+        .eq('id', uid);
   }
 }
 
@@ -174,10 +187,11 @@ class DisabledUserProfileRepository implements UserProfileRepository {
 }
 
 final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {
-  final readyAsync = ref.watch(firebaseReadyProvider);
+  final readyAsync = ref.watch(supabaseReadyProvider);
   return readyAsync.maybeWhen(
-    data: (ready) => ready ? FirebaseUserProfileRepository(FirebaseFirestore.instance) : DisabledUserProfileRepository(),
+    data: (ready) => ready 
+        ? SupabaseUserProfileRepository(Supabase.instance.client) 
+        : DisabledUserProfileRepository(),
     orElse: () => DisabledUserProfileRepository(),
   );
 });
-

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -27,7 +27,7 @@ class NotificationsScreen extends ConsumerWidget {
                 onPressed: () async {
                   final user = currentUser.value;
                   if (user != null) {
-                    await ref.read(notificationRepositoryProvider).markAllAsRead(user.uid);
+                    await ref.read(notificationRepositoryProvider).markAllAsRead(user.id);
                   }
                 },
                 icon: const Icon(Icons.done_all, size: 18),
@@ -210,7 +210,7 @@ class _NotificationTile extends ConsumerWidget {
           children: [
             const SizedBox(height: 4),
             Text(
-              notification.body,
+              notification.body ?? '',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
               ),

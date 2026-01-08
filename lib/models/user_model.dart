@@ -1,6 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-class UserModel {
+﻿class UserModel {
   final String uid;
   final String? displayName;
   final String? email;
@@ -33,44 +31,47 @@ class UserModel {
     this.isOnline = false,
   });
 
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-
+  factory UserModel.fromMap(Map<String, dynamic> data) {
     return UserModel(
-      uid: doc.id,
-      displayName: data['displayName'],
+      uid: data['id'] ?? data['uid'] ?? '',
+      displayName: data['display_name'] ?? data['displayName'],
       email: data['email'],
-      phoneNumber: data['phoneNumber'],
-      profilePicture: data['profilePicture'],
+      phoneNumber: data['phone_number'] ?? data['phoneNumber'],
+      profilePicture: data['profile_picture'] ?? data['profilePicture'] ?? data['photo_url'],
       xp: data['xp'] ?? 0,
       level: data['level'] ?? 1,
       badges: List<String>.from(data['badges'] ?? []),
-      friends: List<String>.from(data['friends'] ?? []),
+      friends: List<String>.from((data['friends'] ?? []) as List),
       region: data['region'],
       interests: List<String>.from(data['interests'] ?? []),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      lastActive: data['lastActive'] != null
-          ? (data['lastActive'] as Timestamp).toDate()
-          : null,
-      isOnline: data['isOnline'] ?? false,
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
+      lastActive: data['last_active'] != null
+          ? (data['last_active'] is String ? DateTime.parse(data['last_active']) : data['last_active'] as DateTime?)
+          : (data['lastActive'] != null 
+              ? (data['lastActive'] is String ? DateTime.parse(data['lastActive']) : data['lastActive'] as DateTime?)
+              : null),
+      isOnline: data['is_online'] ?? data['isOnline'] ?? false,
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
-      'displayName': displayName,
+      'id': uid,
+      'display_name': displayName,
       'email': email,
-      'phoneNumber': phoneNumber,
-      'profilePicture': profilePicture,
+      'phone_number': phoneNumber,
+      'profile_picture': profilePicture,
       'xp': xp,
       'level': level,
       'badges': badges,
       'friends': friends,
       'region': region,
       'interests': interests,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'lastActive': lastActive != null ? Timestamp.fromDate(lastActive!) : null,
-      'isOnline': isOnline,
+      'created_at': createdAt.toIso8601String(),
+      'last_active': lastActive?.toIso8601String(),
+      'is_online': isOnline,
     };
   }
 

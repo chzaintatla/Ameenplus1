@@ -1,9 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/follow_providers.dart';
-import '../../network/repositories/follow_repository.dart';
 
 class FollowersFollowingScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -47,8 +46,6 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
     return Scaffold(
       appBar: AppBar(
         title: const Text('Followers & Following'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -60,8 +57,8 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildFollowersTab(context, mediaQuery, currentUser?.uid),
-          _buildFollowingTab(context, mediaQuery, currentUser?.uid),
+          _buildFollowersTab(context, mediaQuery, currentUser?.id),
+          _buildFollowingTab(context, mediaQuery, currentUser?.id),
         ],
       ),
     );
@@ -80,15 +77,10 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
                 Icon(
                   Icons.people_outline,
                   size: 64,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: Colors.grey,
                 ),
                 SizedBox(height: mediaQuery.size.height * 0.02),
-                Text(
-                  'No followers yet',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
+                const Text('No followers yet'),
               ],
             ),
           );
@@ -99,38 +91,20 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
           itemCount: followers.length,
           itemBuilder: (context, index) {
             final user = followers[index];
-            final userId = user['uid'] as String;
-            final displayName = user['displayName'] as String? ?? 'User';
-            final photoUrl = user['photoUrl'] as String? ?? user['profilePicture'] as String?;
+            final userId = user['id'] as String; // Supabase uses 'id'
+            final displayName = user['display_name'] as String? ?? 'User';
+            final photoUrl = user['photo_url'] as String?;
             final isCurrentUser = userId == currentUserId;
 
             return Card(
               margin: EdgeInsets.only(bottom: mediaQuery.size.height * 0.01),
               child: ListTile(
                 leading: CircleAvatar(
-                  radius: mediaQuery.size.width * 0.06,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                   backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                  child: photoUrl == null
-                      ? Icon(
-                          Icons.person,
-                          color: Theme.of(context).colorScheme.primary,
-                        )
-                      : null,
+                  child: photoUrl == null ? const Icon(Icons.person) : null,
                 ),
-                title: Text(
-                  displayName,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  _getSafeEmail(user, currentUserId),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                title: Text(displayName),
+                subtitle: Text(_getSafeEmail(user, currentUserId)),
                 trailing: isCurrentUser
                     ? null
                     : _buildFollowButton(context, currentUserId ?? '', userId),
@@ -140,35 +114,7 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            SizedBox(height: mediaQuery.size.height * 0.02),
-            Text(
-              'Error loading followers',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            SizedBox(height: mediaQuery.size.height * 0.01),
-            Text(
-              error.toString(),
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: mediaQuery.size.height * 0.02),
-            ElevatedButton.icon(
-              onPressed: () => ref.invalidate(followersListProvider(widget.userId)),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
+      error: (error, stack) => Center(child: Text(error.toString())),
     );
   }
 
@@ -185,15 +131,10 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
                 Icon(
                   Icons.person_outline,
                   size: 64,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: Colors.grey,
                 ),
                 SizedBox(height: mediaQuery.size.height * 0.02),
-                Text(
-                  'Not following anyone yet',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
+                const Text('Not following anyone yet'),
               ],
             ),
           );
@@ -204,38 +145,20 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
           itemCount: following.length,
           itemBuilder: (context, index) {
             final user = following[index];
-            final userId = user['uid'] as String;
-            final displayName = user['displayName'] as String? ?? 'User';
-            final photoUrl = user['photoUrl'] as String? ?? user['profilePicture'] as String?;
+            final userId = user['id'] as String; // Supabase uses 'id'
+            final displayName = user['display_name'] as String? ?? 'User';
+            final photoUrl = user['photo_url'] as String?;
             final isCurrentUser = userId == currentUserId;
 
             return Card(
               margin: EdgeInsets.only(bottom: mediaQuery.size.height * 0.01),
               child: ListTile(
                 leading: CircleAvatar(
-                  radius: mediaQuery.size.width * 0.06,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                   backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                  child: photoUrl == null
-                      ? Icon(
-                          Icons.person,
-                          color: Theme.of(context).colorScheme.primary,
-                        )
-                      : null,
+                  child: photoUrl == null ? const Icon(Icons.person) : null,
                 ),
-                title: Text(
-                  displayName,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  _getSafeEmail(user, currentUserId),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                title: Text(displayName),
+                subtitle: Text(_getSafeEmail(user, currentUserId)),
                 trailing: isCurrentUser
                     ? null
                     : _buildFollowButton(context, currentUserId ?? '', userId),
@@ -245,42 +168,12 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            SizedBox(height: mediaQuery.size.height * 0.02),
-            Text(
-              'Error loading following',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            SizedBox(height: mediaQuery.size.height * 0.01),
-            Text(
-              error.toString(),
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: mediaQuery.size.height * 0.02),
-            ElevatedButton.icon(
-              onPressed: () => ref.invalidate(followingListProvider(widget.userId)),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
+      error: (error, stack) => Center(child: Text(error.toString())),
     );
   }
 
   Widget _buildFollowButton(BuildContext context, String currentUserId, String targetUserId) {
-    if (currentUserId.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (currentUserId.isEmpty) return const SizedBox.shrink();
 
     final isFollowingAsync = ref.watch(isFollowingProvider({
       'followerId': currentUserId,
@@ -293,23 +186,14 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
           try {
             final repository = ref.read(followRepositoryProvider);
             if (isFollowing) {
-              await repository.unfollowUser(
-                followerId: currentUserId,
-                followingId: targetUserId,
-              );
+              await repository.unfollowUser(currentUserId, targetUserId);
             } else {
-              await repository.followUser(
-                followerId: currentUserId,
-                followingId: targetUserId,
-              );
+              await repository.followUser(currentUserId, targetUserId);
             }
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error: ${e.toString()}'),
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                ),
+                SnackBar(content: Text('Error: ${e.toString()}')),
               );
             }
           }
@@ -326,9 +210,9 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
   }
 
   String _getSafeEmail(Map<String, dynamic> user, String? currentUserId) {
-    final userId = user['uid'] as String?;
+    final userId = user['id'] as String?;
     final email = user['email'] as String?;
-    final isEmailPublic = user['isEmailPublic'] as bool? ?? false;
+    final isEmailPublic = (user['is_email_public'] ?? user['isEmailPublic']) as bool? ?? false;
     
     if (email == null || email.isEmpty) return '';
     if (currentUserId == null) return 'Email hidden';
@@ -337,4 +221,3 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
     return email;
   }
 }
-

@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 class PrayerTimesCalculator {
   static const double pi = math.pi;

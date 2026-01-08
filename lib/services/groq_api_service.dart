@@ -1,4 +1,5 @@
-import 'dart:convert';
+﻿import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'islamic_input_filter.dart';
 import 'islamic_output_filter.dart';
@@ -9,15 +10,45 @@ class GroqApiService {
   static const String _apiKey = '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';
   
   static const String _model = 'llama-3.3-70b-versatile';
+  static const String _visionModel = 'llama-3.2-11b-vision-preview';
 
   Future<ContentValidationResult> validateContent({
     required String? text,
     String? mediaType,
     String? mediaDescription,
+    String? mediaPath,
   }) async {
     try {
-      final prompt = _buildValidationPrompt(text, mediaType, mediaDescription);
+      final isImage = mediaType == 'image' && mediaPath != null;
+      final model = isImage ? _visionModel : _model;
       
+      final messages = <Map<String, dynamic>>[
+        {
+          'role': 'system',
+          'content': 'You are an Islamic content validator. Your role is to ensure all content aligns with Islamic principles, Quran, and authentic Hadith. You must be strict and accurate.',
+        },
+      ];
+
+      if (isImage) {
+        final bytes = await File(mediaPath).readAsBytes();
+        final base64Image = base64Encode(bytes);
+        messages.add({
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': _buildValidationPrompt(text, mediaType, mediaDescription)},
+            {
+              'type': 'image_url',
+              'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+            },
+          ],
+        });
+      } else {
+        messages.add({
+          'role': 'user',
+          'content': _buildValidationPrompt(text, mediaType, mediaDescription),
+        });
+      }
+
       final response = await http.post(
         Uri.parse('$_baseUrl/chat/completions'),
         headers: {
@@ -25,17 +56,8 @@ class GroqApiService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'model': _model,
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'You are an Islamic content validator. Your role is to ensure all content aligns with Islamic principles, Quran, and authentic Hadith. You must be strict and accurate.',
-            },
-            {
-              'role': 'user',
-              'content': prompt,
-            },
-          ],
+          'model': model,
+          'messages': messages,
           'temperature': 0.3,
           'max_tokens': 500,
         }),
@@ -63,31 +85,28 @@ class GroqApiService {
     String? profession,
     List<String>? interests,
     String? language,
+    String? mediaPath,
+    String? mediaType,
   }) async {
     try {
-      // STEP 1: INPUT FILTER - Pre-filter to block haram/non-Islamic content
       final inputFilter = IslamicInputFilter.isIslamicSafe(message);
       if (!inputFilter.isSafe) {
         return 'I apologize, but I cannot respond to that request. Please ask about Islamic topics only. ${inputFilter.reason}';
       }
 
-      // STEP 2: RAG - Retrieve relevant Islamic context
       final ragContext = IslamicRAGService.retrieveContext(message);
-      
-      // STEP 3: Detect language
+
       final isUrdu = language == 'urdu' || 
-                     message.toLowerCase().contains('اردو') || 
                      message.contains('urdu') ||
                      _containsUrduCharacters(message);
-      
-      // STEP 4: Build strong system prompt (as per guide)
+
       final systemPrompt = _buildSystemPrompt(
         isUrdu: isUrdu,
         profession: profession,
         interests: interests,
       );
       
-      final messages = <Map<String, String>>[
+      final messages = <Map<String, dynamic>>[
         {
           'role': 'system',
           'content': systemPrompt,
@@ -95,18 +114,44 @@ class GroqApiService {
       ];
 
       if (conversationHistory != null && conversationHistory.isNotEmpty) {
-        messages.addAll(conversationHistory);
+        for (var msg in conversationHistory) {
+          final role = msg['role'] ?? 'user';
+          final content = msg['content'] ?? '';
+          if (content.isNotEmpty) {
+            messages.add({
+              'role': role,
+              'content': content,
+            });
+          }
+        }
       }
 
-      // Build user message with RAG context
-      final userMessage = ragContext.isNotEmpty && ragContext.contains('Relevant Islamic Context')
+      final userContent = ragContext.isNotEmpty && ragContext.contains('Relevant Islamic Context')
           ? '$message\n\n$ragContext'
           : message;
 
-      messages.add({
-        'role': 'user',
-        'content': userMessage,
-      });
+      if (mediaType == 'image' && mediaPath != null) {
+        final bytes = await File(mediaPath).readAsBytes();
+        final base64Image = base64Encode(bytes);
+        messages.add({
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': userContent},
+            {
+              'type': 'image_url',
+              'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+            },
+          ],
+        });
+      } else {
+        messages.add({
+          'role': 'user',
+          'content': userContent,
+        });
+      }
+
+      final isImage = mediaType == 'image' && mediaPath != null;
+      final model = isImage ? _visionModel : _model;
 
       final response = await http.post(
         Uri.parse('$_baseUrl/chat/completions'),
@@ -115,7 +160,7 @@ class GroqApiService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'model': _model,
+          'model': model,
           'messages': messages,
           'temperature': 0.7,
           'max_tokens': 1000,
@@ -134,10 +179,8 @@ class GroqApiService {
             data['choices'][0]['message'] != null) {
           final content = data['choices'][0]['message']['content'] as String?;
           if (content != null && content.isNotEmpty) {
-            // STEP 5: OUTPUT FILTER - Post-filter to validate response
             final outputFilter = IslamicOutputFilter.validateResponse(content);
             if (!outputFilter.isValid) {
-              // If response is invalid, return a safe fallback
               return 'I apologize, but I need to provide a more accurate response. Please rephrase your question, and I will answer based on authentic Islamic sources. Allah knows best.';
             }
             return content;
@@ -227,37 +270,37 @@ Format: [Deed Name] - [Description] - [Connection] - [Benefit]
     final buffer = StringBuffer();
     
     if (isUrdu) {
-      buffer.writeln('آپ AmeenPlus ایپ کے لیے ایک اسلامی AI معاون ہیں۔');
+      buffer.writeln('Ø¢Ù¾ AmeenPlus Ø§ÛŒÙ¾ Ú©Û’ Ù„ÛŒÛ’ Ø§ÛŒÚ© Ø§Ø³Ù„Ø§Ù…ÛŒ AI Ù…Ø¹Ø§ÙˆÙ† ÛÛŒÚºÛ”');
       buffer.writeln('');
-      buffer.writeln('سخت قوانین:');
-      buffer.writeln('- صرف مستند اسلامی علم کا استعمال کریں');
-      buffer.writeln('- پہلے قرآن، پھر صحیح حدیث ترجیح دیں');
-      buffer.writeln('- اگر یقین نہیں تو کہیں: "اللہ اعلم"');
-      buffer.writeln('- کبھی بھی حرام، تشدد، سیاست، یا انتہا پسندی کو فروغ نہ دیں');
-      buffer.writeln('- ذاتی فتوے نہ دیں');
-      buffer.writeln('- ماخذ سے باہر قیاس نہ کریں');
-      buffer.writeln('- احترام آمیز اسلامی لہجہ برقرار رکھیں');
+      buffer.writeln('Ø³Ø®Øª Ù‚ÙˆØ§Ù†ÛŒÙ†:');
+      buffer.writeln('- ØµØ±Ù Ù…Ø³ØªÙ†Ø¯ Ø§Ø³Ù„Ø§Ù…ÛŒ Ø¹Ù„Ù… Ú©Ø§ Ø§Ø³ØªØ¹Ù…Ø§Ù„ Ú©Ø±ÛŒÚº');
+      buffer.writeln('- Ù¾ÛÙ„Û’ Ù‚Ø±Ø¢Ù†ØŒ Ù¾Ú¾Ø± ØµØ­ÛŒØ­ Ø­Ø¯ÛŒØ« ØªØ±Ø¬ÛŒØ­ Ø¯ÛŒÚº');
+      buffer.writeln('- Ø§Ú¯Ø± ÛŒÙ‚ÛŒÙ† Ù†ÛÛŒÚº ØªÙˆ Ú©ÛÛŒÚº: "Ø§Ù„Ù„Û Ø§Ø¹Ù„Ù…"');
+      buffer.writeln('- Ú©Ø¨Ú¾ÛŒ Ø¨Ú¾ÛŒ Ø­Ø±Ø§Ù…ØŒ ØªØ´Ø¯Ø¯ØŒ Ø³ÛŒØ§Ø³ØªØŒ ÛŒØ§ Ø§Ù†ØªÛØ§ Ù¾Ø³Ù†Ø¯ÛŒ Ú©Ùˆ ÙØ±ÙˆØº Ù†Û Ø¯ÛŒÚº');
+      buffer.writeln('- Ø°Ø§ØªÛŒ ÙØªÙˆÛ’ Ù†Û Ø¯ÛŒÚº');
+      buffer.writeln('- Ù…Ø§Ø®Ø° Ø³Û’ Ø¨Ø§ÛØ± Ù‚ÛŒØ§Ø³ Ù†Û Ú©Ø±ÛŒÚº');
+      buffer.writeln('- Ø§Ø­ØªØ±Ø§Ù… Ø¢Ù…ÛŒØ² Ø§Ø³Ù„Ø§Ù…ÛŒ Ù„ÛØ¬Û Ø¨Ø±Ù‚Ø±Ø§Ø± Ø±Ú©Ú¾ÛŒÚº');
       buffer.writeln('');
-      buffer.writeln('مستند ماخذ:');
-      buffer.writeln('- قرآن');
-      buffer.writeln('- صحیح بخاری');
-      buffer.writeln('- صحیح مسلم');
-      buffer.writeln('- سنن ابو داؤد');
-      buffer.writeln('- ترمذی');
-      buffer.writeln('- مستند علماء کا اجماع');
+      buffer.writeln('Ù…Ø³ØªÙ†Ø¯ Ù…Ø§Ø®Ø°:');
+      buffer.writeln('- Ù‚Ø±Ø¢Ù†');
+      buffer.writeln('- ØµØ­ÛŒØ­ Ø¨Ø®Ø§Ø±ÛŒ');
+      buffer.writeln('- ØµØ­ÛŒØ­ Ù…Ø³Ù„Ù…');
+      buffer.writeln('- Ø³Ù†Ù† Ø§Ø¨Ùˆ Ø¯Ø§Ø¤Ø¯');
+      buffer.writeln('- ØªØ±Ù…Ø°ÛŒ');
+      buffer.writeln('- Ù…Ø³ØªÙ†Ø¯ Ø¹Ù„Ù…Ø§Ø¡ Ú©Ø§ Ø§Ø¬Ù…Ø§Ø¹');
       buffer.writeln('');
       if (profession != null || (interests != null && interests.isNotEmpty)) {
-        buffer.writeln('صارف کا پروفائل:');
+        buffer.writeln('ØµØ§Ø±Ù Ú©Ø§ Ù¾Ø±ÙˆÙØ§Ø¦Ù„:');
         if (profession != null) {
-          buffer.writeln('- پیشہ: $profession');
+          buffer.writeln('- Ù¾ÛŒØ´Û: $profession');
         }
         if (interests != null && interests.isNotEmpty) {
-          buffer.writeln('- دلچسپیاں: ${interests.join(', ')}');
+          buffer.writeln('- Ø¯Ù„Ú†Ø³Ù¾ÛŒØ§Úº: ${interests.join(', ')}');
         }
-        buffer.writeln('لہجہ اس کے مطابق ایڈجسٹ کریں۔');
+        buffer.writeln('Ù„ÛØ¬Û Ø§Ø³ Ú©Û’ Ù…Ø·Ø§Ø¨Ù‚ Ø§ÛŒÚˆØ¬Ø³Ù¹ Ú©Ø±ÛŒÚºÛ”');
         buffer.writeln('');
       }
-      buffer.writeln('اگر سوال اسلام سے باہر ہے تو مہذب طریقے سے انکار کریں۔');
+      buffer.writeln('Ø§Ú¯Ø± Ø³ÙˆØ§Ù„ Ø§Ø³Ù„Ø§Ù… Ø³Û’ Ø¨Ø§ÛØ± ÛÛ’ ØªÙˆ Ù…ÛØ°Ø¨ Ø·Ø±ÛŒÙ‚Û’ Ø³Û’ Ø§Ù†Ú©Ø§Ø± Ú©Ø±ÛŒÚºÛ”');
     } else {
       buffer.writeln('You are an Islamic AI assistant for the AmeenPlus app.');
       buffer.writeln('');

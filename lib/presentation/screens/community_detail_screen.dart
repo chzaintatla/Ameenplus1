@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
@@ -19,7 +19,7 @@ final isCommunityMemberProvider = FutureProvider.family<bool, String>((ref, comm
   if (user == null) return false;
 
   final repository = ref.read(communityRepositoryProvider);
-  return await repository.isMember(communityId, user.uid);
+  return await repository.isMember(communityId, user.id);
 });
 
 class CommunityDetailScreen extends ConsumerWidget {
@@ -164,7 +164,7 @@ class CommunityDetailScreen extends ConsumerWidget {
                               if (user != null) {
                                 await ref.read(communityRepositoryProvider).leaveCommunity(
                                   communityId,
-                                  user.uid,
+                                  user.id,
                                 );
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -188,7 +188,7 @@ class CommunityDetailScreen extends ConsumerWidget {
                           if (user != null) {
                             await ref.read(communityRepositoryProvider).joinCommunity(
                               communityId,
-                              user.uid,
+                              user.id,
                             );
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

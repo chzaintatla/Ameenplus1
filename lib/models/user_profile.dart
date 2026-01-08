@@ -1,4 +1,4 @@
-class UserProfile {
+﻿class UserProfile {
   const UserProfile({
     required this.uid,
     required this.displayName,
@@ -44,31 +44,31 @@ class UserProfile {
   factory UserProfile.fromMap(String uid, Map<String, Object?> map) {
     return UserProfile(
       uid: uid,
-      displayName: (map['displayName'] as String?) ?? 'User',
-      photoUrl: map['photoUrl'] as String?,
+      displayName: (map['display_name'] ?? map['displayName'] ?? 'User') as String,
+      photoUrl: (map['profile_picture'] ?? map['photo_url'] ?? map['photoUrl']) as String?,
       points: (map['points'] as num?)?.toInt() ?? 0,
-      isProfilePublic: (map['isProfilePublic'] as bool?) ?? true,
+      isProfilePublic: (map['is_profile_public'] ?? map['isProfilePublic']) as bool? ?? true,
       interests: map['interests'] != null 
           ? List<String>.from(map['interests'] as List)
           : <String>[],
       email: map['email'] as String?,
-      phoneNumber: map['phoneNumber'] as String?,
+      phoneNumber: (map['phone_number'] ?? map['phoneNumber']) as String?,
       bio: map['bio'] as String?,
       age: map['age'] != null ? (map['age'] as num).toInt() : null,
       gender: map['gender'] as String?,
-      isEmailPublic: (map['isEmailPublic'] as bool?) ?? false,
-      isPhonePublic: (map['isPhonePublic'] as bool?) ?? false,
+      isEmailPublic: (map['is_email_public'] ?? map['isEmailPublic']) as bool? ?? false,
+      isPhonePublic: (map['is_phone_public'] ?? map['isPhonePublic']) as bool? ?? false,
       profession: map['profession'] as String?,
       badges: map['badges'] != null 
           ? List<String>.from(map['badges'] as List)
           : <String>[],
       rank: map['rank'] as String?,
-      negativePoints: (map['negativePoints'] as num?)?.toInt() ?? 0,
-      accountBlockedUntil: map['accountBlockedUntil'] != null
-          ? DateTime.parse(map['accountBlockedUntil'] as String)
+      negativePoints: ((map['negative_points'] ?? map['negativePoints']) as num?)?.toInt() ?? 0,
+      accountBlockedUntil: (map['account_blocked_until'] ?? map['accountBlockedUntil']) != null
+          ? DateTime.parse((map['account_blocked_until'] ?? map['accountBlockedUntil']) as String)
           : null,
-      moderationLogs: map['moderationLogs'] != null
-          ? (map['moderationLogs'] as List)
+      moderationLogs: (map['moderation_logs'] ?? map['moderationLogs']) != null
+          ? ((map['moderation_logs'] ?? map['moderationLogs']) as List)
               .map((e) => ModerationLog.fromMap(e as Map<String, dynamic>))
               .toList()
           : <ModerationLog>[],
@@ -77,24 +77,24 @@ class UserProfile {
 
   Map<String, Object?> toMap() {
     return <String, Object?>{
-      'displayName': displayName,
-      'photoUrl': photoUrl,
+      'display_name': displayName,
+      'photo_url': photoUrl,
       'points': points,
-      'isProfilePublic': isProfilePublic,
+      'is_profile_public': isProfilePublic,
       'interests': interests,
       'email': email,
-      'phoneNumber': phoneNumber,
+      'phone_number': phoneNumber,
       'bio': bio,
       'age': age,
       'gender': gender,
-      'isEmailPublic': isEmailPublic,
-      'isPhonePublic': isPhonePublic,
+      'is_email_public': isEmailPublic,
+      'is_phone_public': isPhonePublic,
       'profession': profession,
       'badges': badges,
       'rank': rank,
-      'negativePoints': negativePoints,
-      'accountBlockedUntil': accountBlockedUntil?.toIso8601String(),
-      'moderationLogs': moderationLogs.map((e) => e.toMap()).toList(),
+      'negative_points': negativePoints,
+      'account_blocked_until': accountBlockedUntil?.toIso8601String(),
+      'moderation_logs': moderationLogs.map((e) => e.toMap()).toList(),
     };
   }
   
@@ -159,8 +159,8 @@ class ModerationLog {
     return ModerationLog(
       timestamp: DateTime.parse(map['timestamp'] as String),
       reason: map['reason'] as String,
-      pointsAdded: (map['pointsAdded'] as num).toInt(),
-      postId: map['postId'] as String?,
+      pointsAdded: (map['points_added'] ?? map['pointsAdded'] as num).toInt(),
+      postId: (map['post_id'] ?? map['postId']) as String?,
     );
   }
 
@@ -168,8 +168,8 @@ class ModerationLog {
     return {
       'timestamp': timestamp.toIso8601String(),
       'reason': reason,
-      'pointsAdded': pointsAdded,
-      'postId': postId,
+      'points_added': pointsAdded,
+      'post_id': postId,
     };
   }
 }

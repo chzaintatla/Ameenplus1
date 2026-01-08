@@ -1,80 +1,83 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../../utils/app_constants.dart';
 import '../../models/chat_model.dart';
 import 'notification_repository.dart';
 
 class ChatRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   final NotificationRepository _notificationRepo = NotificationRepository();
 
   /// Get or create a chat between two users
   Future<String> getOrCreateChat(String userId1, String userId2) async {
     // Check if chat already exists
-    final existingChats = await _firestore
-        .collection(AppConstants.collectionChats)
-        .where('participants', arrayContains: userId1)
-        .get();
+    final existingChats = await _supabase
+        .from(AppConstants.collectionChats)
+        .select()
+        .contains('participants', [userId1]);
 
-    for (var doc in existingChats.docs) {
-      final chat = ChatModel.fromFirestore(doc);
-      if (chat.participants.contains(userId2) && chat.participants.length == 2) {
-        return chat.id;
+    for (var chat in existingChats) {
+      final participants = List<String>.from(chat['participants'] ?? []);
+      if (participants.contains(userId2) && participants.length == 2) {
+        return chat['id'].toString();
       }
     }
 
     // Create new chat
-    final chatRef = await _firestore.collection(AppConstants.collectionChats).add({
+    final chatData = {
       'participants': [userId1, userId2],
-      'createdAt': FieldValue.serverTimestamp(),
-      'unreadCounts': {userId1: 0, userId2: 0},
-    });
+      'created_at': DateTime.now().toIso8601String(),
+      'unread_counts': {userId1: 0, userId2: 0},
+    };
 
-    return chatRef.id;
+    final response = await _supabase
+        .from(AppConstants.collectionChats)
+        .insert(chatData)
+        .select()
+        .single();
+
+    return response['id'].toString();
   }
 
   /// Get or create a community chat
-  /// Returns the communityId directly since messages are stored in communities/{communityId}/messages
   Future<String> getOrCreateCommunityChat(String communityId) async {
-    final currentUser = _auth.currentUser;
+    final currentUser = _supabase.auth.currentUser;
     if (currentUser == null) {
       throw Exception('User must be authenticated to access community chat');
     }
 
-    // For community chats, we use the community document itself
-    // Messages are stored in communities/{communityId}/messages subcollection
-    final communityDoc = await _firestore
-        .collection(AppConstants.collectionCommunities)
-        .doc(communityId)
-        .get();
+    // Get community document
+    final communityDoc = await _supabase
+        .from(AppConstants.collectionCommunities)
+        .select()
+        .eq('id', communityId)
+        .maybeSingle();
 
-    if (!communityDoc.exists) {
+    if (communityDoc == null) {
       throw Exception('Community not found');
     }
 
     // Ensure user is a member of the community
-    final communityData = communityDoc.data()!;
-    final members = List<String>.from(communityData['members'] ?? []);
+    final members = List<String>.from(communityDoc['members'] ?? []);
     
-    if (!members.contains(currentUser.uid)) {
+    if (!members.contains(currentUser.id)) {
       // Add user to community members
-      await communityDoc.reference.update({
-        'members': FieldValue.arrayUnion([currentUser.uid]),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      members.add(currentUser.id);
+      await _supabase
+          .from(AppConstants.collectionCommunities)
+          .update({
+            'members': members,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', communityId);
       
-      // Wait a bit to ensure the update is propagated
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    // Return communityId - this will be used to access communities/{communityId}/messages
     return communityId;
   }
 
   /// Send a message
-  /// chatId can be either a regular chat ID or a communityId for community chats
   Future<void> sendMessage({
     required String chatId,
     required String senderId,
@@ -86,68 +89,52 @@ class ChatRepository {
     Map<String, dynamic>? metadata,
     bool isCommunityChat = false,
   }) async {
-    DocumentReference messageRef;
-    DocumentReference chatDocRef;
-    
-    if (isCommunityChat) {
-      // Community chat: use communities/{communityId}/messages
-      messageRef = _firestore
-          .collection(AppConstants.collectionCommunities)
-          .doc(chatId)
-          .collection('messages')
-          .doc();
-      
-      chatDocRef = _firestore
-          .collection(AppConstants.collectionCommunities)
-          .doc(chatId);
-    } else {
-      // Regular chat: use chats/{chatId}/messages
-      messageRef = _firestore
-          .collection(AppConstants.collectionChats)
-          .doc(chatId)
-          .collection('messages')
-          .doc();
-      
-      chatDocRef = _firestore
-          .collection(AppConstants.collectionChats)
-          .doc(chatId);
-    }
-
     final message = {
-      'id': messageRef.id,
-      'chatId': chatId,
-      'senderId': senderId,
-      'senderName': senderName,
-      'senderPhotoUrl': senderPhotoUrl,
+      'chat_id': chatId,
+      'sender_id': senderId,
+      'sender_name': senderName,
+      'sender_photo_url': senderPhotoUrl,
       'content': content,
       'type': type,
-      'mediaUrl': mediaUrl,
+      'media_url': mediaUrl,
       'metadata': metadata,
       'read': false,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': DateTime.now().toIso8601String(),
+      'is_community_message': isCommunityChat,
     };
 
-    await messageRef.set(message);
+    // Insert message
+    await _supabase
+        .from('messages')
+        .insert(message);
 
     // Update chat's last message
-    final chatDoc = await chatDocRef.get();
+    final tableName = isCommunityChat 
+        ? AppConstants.collectionCommunities 
+        : AppConstants.collectionChats;
+    
+    final chatDoc = await _supabase
+        .from(tableName)
+        .select()
+        .eq('id', chatId)
+        .maybeSingle();
 
-    if (chatDoc.exists) {
-      final chatData = chatDoc.data()! as Map<String, dynamic>;
-      
+    if (chatDoc != null) {
       if (isCommunityChat) {
-        // For community chats, update the community document
-        final members = List<String>.from(chatData['members'] ?? []);
+        final members = List<String>.from(chatDoc['members'] ?? []);
         
-        await chatDocRef.update({
-          'lastMessage': {
-            'content': content,
-            'senderId': senderId,
-            'senderName': senderName,
-          },
-          'lastMessageTime': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await _supabase
+            .from(tableName)
+            .update({
+              'last_message': {
+                'content': content,
+                'sender_id': senderId,
+                'sender_name': senderName,
+              },
+              'last_message_time': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', chatId);
 
         // Send notifications to other members
         for (var memberId in members) {
@@ -162,27 +149,31 @@ class ChatRepository {
           }
         }
       } else {
-        final participants = List<String>.from(chatData['participants'] ?? []);
-        final unreadCountsData = chatData['unreadCounts'];
-        final unreadCounts = unreadCountsData != null 
-            ? Map<String, int>.from((unreadCountsData as Map).cast<String, int>())
-            : <String, int>{};
+        final participants = List<String>.from(chatDoc['participants'] ?? []);
+        final unreadCounts = Map<String, int>.from(
+          (chatDoc['unread_counts'] as Map?)?.cast<String, int>() ?? {}
+        );
+        
         for (var participantId in participants) {
           if (participantId != senderId) {
             unreadCounts[participantId] = (unreadCounts[participantId] ?? 0) + 1;
           }
         }
 
-        await chatDocRef.update({
-          'lastMessage': {
-            'content': content,
-            'senderId': senderId,
-            'senderName': senderName,
-          },
-          'lastMessageTime': FieldValue.serverTimestamp(),
-          'unreadCounts': unreadCounts,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await _supabase
+            .from(tableName)
+            .update({
+              'last_message': {
+                'content': content,
+                'sender_id': senderId,
+                'sender_name': senderName,
+              },
+              'last_message_time': DateTime.now().toIso8601String(),
+              'unread_counts': unreadCounts,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', chatId);
+            
         for (var participantId in participants) {
           if (participantId != senderId && !participantId.startsWith('community_')) {
             await _notificationRepo.createNotification(
@@ -199,30 +190,19 @@ class ChatRepository {
   }
 
   Stream<List<MessageModel>> getMessages(String chatId, {bool isCommunityChat = false}) async* {
-    CollectionReference messagesRef;
-    
-    if (isCommunityChat) {
-      messagesRef = _firestore
-          .collection(AppConstants.collectionCommunities)
-          .doc(chatId)
-          .collection('messages');
-    }
-    else {
-      messagesRef = _firestore
-          .collection(AppConstants.collectionChats)
-          .doc(chatId)
-          .collection('messages');
-    }
-    
     try {
-      await for (final snapshot in messagesRef
-          .orderBy('timestamp', descending: true)
-          .limit(50)
-          .snapshots()) {
-        final messages = snapshot.docs
+      final stream = _supabase
+          .from('messages')
+          .stream(primaryKey: ['id'])
+          .eq('chat_id', chatId)
+          .order('timestamp', ascending: true)
+          .limit(50);
+
+      await for (final data in stream) {
+        final messages = data
             .map((doc) {
               try {
-                return MessageModel.fromFirestore(doc);
+                return MessageModel.fromMap(doc);
               } catch (e) {
                 if (kDebugMode) {
                   debugPrint('Error parsing message document: $e');
@@ -233,121 +213,79 @@ class ChatRepository {
             .whereType<MessageModel>()
             .toList();
         
-        messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
         yield messages;
       }
     } catch (e) {
-      if (e.toString().contains('index') || e.toString().contains('FAILED_PRECONDITION')) {
-        try {
-          await for (final snapshot in messagesRef
-              .limit(50)
-              .snapshots()) {
-            final messages = snapshot.docs
-                .map((doc) {
-                  try {
-                    return MessageModel.fromFirestore(doc);
-                  } catch (e) {
-                    if (kDebugMode) {
-                      debugPrint('Error parsing message document: $e');
-                    }
-                    return null;
-                  }
-                })
-                .whereType<MessageModel>()
-                .toList();
-            
-            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-            yield messages;
-          }
-        } catch (e2) {
-          if (kDebugMode) {
-            debugPrint('Error in getMessages fallback: $e2');
-          }
-          yield <MessageModel>[];
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('Error in getMessages stream: $e');
-        }
-        yield <MessageModel>[];
+      if (kDebugMode) {
+        debugPrint('Error in getMessages stream: $e');
       }
+      yield <MessageModel>[];
     }
   }
 
-  Stream<List<ChatModel>> getUserChats(String userId) {
-    return _firestore
-        .collection(AppConstants.collectionChats)
-        .where('participants', arrayContains: userId)
-        .orderBy('lastMessageTime', descending: true)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => ChatModel.fromFirestore(doc))
-          .toList();
-    });
+  Stream<List<ChatModel>> getUserChats(String userId) async* {
+    try {
+      final stream = _supabase
+          .from(AppConstants.collectionChats)
+          .stream(primaryKey: ['id']);
+
+      await for (final data in stream) {
+        final chats = data
+            .where((doc) => (doc['participants'] as List?)?.contains(userId) ?? false)
+            .map((doc) => ChatModel.fromMap(doc))
+            .toList();
+        
+        chats.sort((a, b) {
+          final timeA = a.lastMessageTime ?? a.createdAt;
+          final timeB = b.lastMessageTime ?? b.createdAt;
+          return timeB.compareTo(timeA);
+        });
+        
+        yield chats;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error in getUserChats stream: $e');
+      }
+      yield <ChatModel>[];
+    }
   }
 
   /// Mark messages as read
   Future<void> markMessagesAsRead(String chatId, String userId, {bool isCommunityChat = false}) async {
     try {
-      final batch = _firestore.batch();
-      
-      // Get messages collection reference based on chat type
-      CollectionReference messagesRef;
-      DocumentReference chatDocRef;
-      
-      if (isCommunityChat) {
-        messagesRef = _firestore
-            .collection(AppConstants.collectionCommunities)
-            .doc(chatId)
-            .collection('messages');
-        chatDocRef = _firestore
-            .collection(AppConstants.collectionCommunities)
-            .doc(chatId);
-      } else {
-        messagesRef = _firestore
-            .collection(AppConstants.collectionChats)
-            .doc(chatId)
-            .collection('messages');
-        chatDocRef = _firestore
-            .collection(AppConstants.collectionChats)
-            .doc(chatId);
-      }
-
-      final allMessages = await messagesRef
-          .where('read', isEqualTo: false)
-          .get();
-
-      // Filter messages that are not from the current user
-      final unreadMessages = allMessages.docs.where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return data['senderId'] != userId;
-      });
-
-      for (var doc in unreadMessages) {
-        batch.update(doc.reference, {'read': true});
-      }
+      // Update all unread messages
+      await _supabase
+          .from('messages')
+          .update({'read': true})
+          .eq('chat_id', chatId)
+          .eq('read', true)
+          .neq('sender_id', userId);
 
       // Reset unread count
-      final chatDoc = await chatDocRef.get();
-      if (chatDoc.exists) {
-        final chatData = chatDoc.data()! as Map<String, dynamic>;
-        final unreadCountsData = chatData['unreadCounts'];
-        final unreadCounts = unreadCountsData != null 
-            ? Map<String, int>.from((unreadCountsData as Map).cast<String, int>())
-            : <String, int>{};
+      final tableName = isCommunityChat 
+          ? AppConstants.collectionCommunities 
+          : AppConstants.collectionChats;
+          
+      final chatDoc = await _supabase
+          .from(tableName)
+          .select()
+          .eq('id', chatId)
+          .maybeSingle();
+          
+      if (chatDoc != null && !isCommunityChat) {
+        final unreadCounts = Map<String, int>.from(
+          (chatDoc['unread_counts'] as Map?)?.cast<String, int>() ?? {}
+        );
         unreadCounts[userId] = 0;
         
-        batch.update(chatDocRef, {'unreadCounts': unreadCounts});
+        await _supabase
+            .from(tableName)
+            .update({'unread_counts': unreadCounts})
+            .eq('id', chatId);
       }
-
-      if (unreadMessages.isNotEmpty || chatDoc.exists) {
-        await batch.commit();
-      }
-    }
-    catch (e) {
+    } catch (e) {
       debugPrint('Error marking messages as read: $e');
     }
   }
 }
-

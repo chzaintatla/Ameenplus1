@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/profile_providers.dart';
 import '../../services/daily_deeds_service.dart';
+import '../../models/daily_deed.dart';
+import '../../utils/app_constants.dart';
 
 class DailyDeedScreen extends ConsumerStatefulWidget {
   const DailyDeedScreen({super.key});
@@ -177,7 +179,14 @@ class _DailyDeedScreenState extends ConsumerState<DailyDeedScreen> {
                                   runSpacing: 8,
                                   children: _todaysDeed!.interests.map((interest) {
                                     return Chip(
-                                      label: Text(interest),
+                                      label: Text(
+                                        interest,
+                                        style: TextStyle(
+                                          color: Theme.of(context).brightness == Brightness.light
+                                              ? Colors.black
+                                              : null,
+                                        ),
+                                      ),
                                       avatar: const Icon(Icons.favorite, size: 18),
                                     );
                                   }).toList(),

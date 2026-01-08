@@ -1,4 +1,4 @@
-class SecurityUtils {
+﻿class SecurityUtils {
   SecurityUtils._();
 
   static String sanitizeInput(String input) {

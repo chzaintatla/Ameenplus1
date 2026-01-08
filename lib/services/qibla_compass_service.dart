@@ -1,7 +1,7 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart' as geo;
-import 'package:sensors_plus/sensors_plus.dart';
+
 
 const double kaabaLatitude = 21.4225241;
 const double kaabaLongitude = 39.8261818;
@@ -98,17 +98,15 @@ class QiblaCompassService {
   Future<QiblaLocationAccuracy> validateLocationAccuracy() async {
     try {
       final position = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.high,
+        locationSettings: const geo.LocationSettings(accuracy: geo.LocationAccuracy.high),
       );
       
-      if (position.accuracy != null) {
-        if (position.accuracy! < 20) {
-          return QiblaLocationAccuracy.high;
-        } else if (position.accuracy! < 50) {
-          return QiblaLocationAccuracy.medium;
-        } else {
-          return QiblaLocationAccuracy.low;
-        }
+      if (position.accuracy < 20) {
+        return QiblaLocationAccuracy.high;
+      } else if (position.accuracy < 50) {
+        return QiblaLocationAccuracy.medium;
+      } else {
+        return QiblaLocationAccuracy.low;
       }
       return QiblaLocationAccuracy.medium;
     } catch (e) {

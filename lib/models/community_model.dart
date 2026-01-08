@@ -1,18 +1,13 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-/// Community model for Islamic community groups
-class CommunityModel {
+﻿class CommunityModel {
   final String id;
   final String name;
   final String description;
   final String? imageUrl;
-  final String creatorId;
   final List<String> members;
   final List<String> admins;
+  final String createdBy; // This is the 'creator_id' or 'created_by'
   final String category;
   final bool isPublic;
-  final int postsCount;
-  final int eventsCount;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -21,124 +16,53 @@ class CommunityModel {
     required this.name,
     required this.description,
     this.imageUrl,
-    required this.creatorId,
     this.members = const [],
     this.admins = const [],
+    required this.createdBy,
     this.category = 'General',
     this.isPublic = true,
-    this.postsCount = 0,
-    this.eventsCount = 0,
     required this.createdAt,
     this.updatedAt,
   });
 
-  factory CommunityModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    
+  // Alias for backward compatibility or UI consistency
+  String get creatorId => createdBy;
+
+  factory CommunityModel.fromMap(Map<String, dynamic> data) {
     return CommunityModel(
-      id: doc.id,
+      id: data['id']?.toString() ?? '',
       name: data['name'] ?? '',
       description: data['description'] ?? '',
-      imageUrl: data['imageUrl'],
-      creatorId: data['creatorId'] ?? '',
+      imageUrl: data['image_url'] ?? data['imageUrl'],
       members: List<String>.from(data['members'] ?? []),
-      admins: List<String>.from(data['admins'] ?? []),
+      admins: List<String>.from(data['admins'] ?? data['admin_ids'] ?? []),
+      createdBy: data['created_by'] ?? data['creator_id'] ?? data['createdBy'] ?? '',
       category: data['category'] ?? 'General',
-      isPublic: data['isPublic'] ?? true,
-      postsCount: data['postsCount'] ?? 0,
-      eventsCount: data['eventsCount'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: data['updatedAt'] != null
-          ? (data['updatedAt'] as Timestamp).toDate()
-          : null,
+      isPublic: (data['is_public'] ?? data['isPublic']) as bool? ?? true,
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
+      updatedAt: data['updated_at'] != null
+          ? (data['updated_at'] is String ? DateTime.parse(data['updated_at']) : data['updated_at'] as DateTime?)
+          : (data['updatedAt'] != null 
+              ? (data['updatedAt'] is String ? DateTime.parse(data['updatedAt']) : data['updatedAt'] as DateTime?)
+              : null),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'name': name,
       'description': description,
-      'imageUrl': imageUrl,
-      'creatorId': creatorId,
+      'image_url': imageUrl,
       'members': members,
       'admins': admins,
+      'created_by': createdBy,
       'category': category,
-      'isPublic': isPublic,
-      'postsCount': postsCount,
-      'eventsCount': eventsCount,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'is_public': isPublic,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
     };
   }
-
-  bool isMember(String userId) {
-    return members.contains(userId);
-  }
-
-  bool isAdmin(String userId) {
-    return admins.contains(userId);
-  }
-
-  int get membersCount => members.length;
 }
-
-/// Community Event model
-class CommunityEvent {
-  final String id;
-  final String communityId;
-  final String title;
-  final String description;
-  final DateTime scheduledAt;
-  final String? link;
-  final String? location;
-  final List<String> attendees;
-  final DateTime createdAt;
-
-  CommunityEvent({
-    required this.id,
-    required this.communityId,
-    required this.title,
-    required this.description,
-    required this.scheduledAt,
-    this.link,
-    this.location,
-    this.attendees = const [],
-    required this.createdAt,
-  });
-
-  factory CommunityEvent.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    
-    return CommunityEvent(
-      id: doc.id,
-      communityId: data['communityId'] ?? '',
-      title: data['title'] ?? '',
-      description: data['description'] ?? '',
-      scheduledAt: (data['scheduledAt'] as Timestamp).toDate(),
-      link: data['link'],
-      location: data['location'],
-      attendees: List<String>.from(data['attendees'] ?? []),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-    );
-  }
-
-  Map<String, dynamic> toFirestore() {
-    return {
-      'communityId': communityId,
-      'title': title,
-      'description': description,
-      'scheduledAt': Timestamp.fromDate(scheduledAt),
-      'link': link,
-      'location': location,
-      'attendees': attendees,
-      'createdAt': Timestamp.fromDate(createdAt),
-    };
-  }
-
-  bool isAttending(String userId) {
-    return attendees.contains(userId);
-  }
-
-  int get attendeesCount => attendees.length;
-}
-

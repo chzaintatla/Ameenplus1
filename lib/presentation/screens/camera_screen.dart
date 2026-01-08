@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -165,7 +165,7 @@ class _CameraScreenState extends State<CameraScreen> {
             _buildOptionTile(
               icon: Icons.article,
               title: 'Post',
-              subtitle: 'Create a post with validation',
+              subtitle: 'Share your deed with Islamic validation',
               onTap: () {
                 Navigator.pop(context);
                 _navigateToCreatePost();
@@ -200,7 +200,7 @@ class _CameraScreenState extends State<CameraScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -363,21 +363,71 @@ class _CameraScreenState extends State<CameraScreen> {
                       IconButton(
                         icon: const Icon(Icons.photo_library, color: Colors.white, size: 28),
                         onPressed: () async {
+                          final result = await showModalBottomSheet<String>(
+                            context: context,
+                            builder: (context) => SafeArea(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.image),
+                                    title: const Text('Image'),
+                                    onTap: () => Navigator.pop(context, 'image'),
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.video_library),
+                                    title: const Text('Video'),
+                                    onTap: () => Navigator.pop(context, 'video'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+                              ),
+                            ),
+                          );
+
+                          if (result == null) return;
+
                           final picker = ImagePicker();
-                          final image = await picker.pickImage(source: ImageSource.gallery);
-                          if (image != null && mounted) {
-                            setState(() {
-                              _capturedImage = image;
-                              _capturedVideo = null;
-                            });
-                            // Show options: Create Post or Validate Content
-                            _showOptionsBottomSheet();
+                          if (result == 'image') {
+                            final image = await picker.pickImage(source: ImageSource.gallery);
+                            if (image != null && mounted) {
+                              setState(() {
+                                _capturedImage = image;
+                                _capturedVideo = null;
+                              });
+                              _showOptionsBottomSheet();
+                            }
+                          } else {
+                            final video = await picker.pickVideo(source: ImageSource.gallery);
+                            if (video != null && mounted) {
+                              setState(() {
+                                _capturedVideo = video;
+                                _capturedImage = null;
+                              });
+                              _showOptionsBottomSheet();
+                            }
                           }
                         },
                       ),
                       const SizedBox(width: 40),
                       IconButton(
-                        icon: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 28),
+                        icon: ColorFiltered(
+                          colorFilter: const ColorFilter.mode(
+                            Colors.black87,
+                            BlendMode.srcIn,
+                          ),
+                          child: Image.asset(
+                            'assets/images/chatbot.png',
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Theme.of(context).brightness == Brightness.light
+                              ? Colors.white
+                              : Colors.black54,
+                        ),
                         onPressed: () {
                           Navigator.pop(context);
                           context.push('/ai-chatbot');

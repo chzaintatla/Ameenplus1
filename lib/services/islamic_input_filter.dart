@@ -1,4 +1,4 @@
-/// Input Filter Service - Pre-filter to block haram/non-Islamic content
+﻿/// Input Filter Service - Pre-filter to block haram/non-Islamic content
 /// before sending to Groq API
 class IslamicInputFilter {
   /// Banned keywords that indicate non-Islamic or haram content

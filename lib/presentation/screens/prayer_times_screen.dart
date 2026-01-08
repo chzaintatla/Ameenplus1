@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -80,9 +80,9 @@ final prayerTimesProvider = FutureProvider<Map<String, String>?>((ref) async {
     
     // Debug: Log location and timezone info
     if (kDebugMode) {
-      debugPrint('📍 Location: ${position.latitude}, ${position.longitude}');
-      debugPrint('🕐 Timezone offset: $timezone hours');
-      debugPrint('📅 Date: ${date.toString()}');
+      debugPrint('ðŸ“ Location: ${position.latitude}, ${position.longitude}');
+      debugPrint('ðŸ• Timezone offset: $timezone hours');
+      debugPrint('ðŸ“… Date: ${date.toString()}');
     }
 
     final today = DateFormat('yyyy-MM-dd').format(date);
@@ -344,7 +344,7 @@ class PrayerTimesScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         color: isNext
                             ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.surfaceVariant,
+                            : Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
@@ -482,17 +482,17 @@ class PrayerTimesScreen extends ConsumerWidget {
   String _getPrayerEmoji(String prayerName) {
     switch (prayerName.toLowerCase()) {
       case 'fajr':
-        return '🌅';
+        return 'ðŸŒ…';
       case 'dhuhr':
-        return '☀️';
+        return 'â˜€ï¸';
       case 'asr':
-        return '🌤️';
+        return 'ðŸŒ¤ï¸';
       case 'maghrib':
-        return '🌆';
+        return 'ðŸŒ†';
       case 'isha':
-        return '🌙';
+        return 'ðŸŒ™';
       default:
-        return '🕌';
+        return 'ðŸ•Œ';
     }
   }
 }

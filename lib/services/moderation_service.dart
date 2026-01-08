@@ -1,199 +1,162 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/user_profile.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
+
+class ModerationStatus {
+  final bool isBlocked;
+  final bool isBanned;
+  final DateTime? blockedUntil;
+  final int negativePoints;
+  final int maxNegativePoints = 10;
+  final String? message;
+
+  ModerationStatus({
+    required this.isBlocked,
+    required this.isBanned,
+    this.blockedUntil,
+    required this.negativePoints,
+    this.message,
+  });
+
+  bool get canPost => !isBanned && !isBlocked;
+}
 
 class ModerationService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
-  static const int maxNegativePoints = 10;
-  static const int maxAttemptsPerMonth = 10;
-  static const int warningThreshold = 4;
-  static const int finalWarningThreshold = 7;
-  static const int blockDurationYears = 10;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  Future<ModerationResult> addNegativePoint({
-    required String userId,
+  Future<bool> moderateContent(String content) async {
+    // Simple content moderation - can be enhanced with AI/ML
+    final inappropriateWords = ['spam', 'abuse', 'hate'];
+    
+    for (final word in inappropriateWords) {
+      if (content.toLowerCase().contains(word)) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  Future<void> reportContent({
+    required String contentId,
+    required String contentType,
+    required String reportedBy,
     required String reason,
-    String? postId,
   }) async {
     try {
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists) {
-        throw Exception('User not found');
-      }
-
-      final userData = userDoc.data()!;
-      final currentNegativePoints = (userData['negativePoints'] as num?)?.toInt() ?? 0;
-      final moderationLogs = (userData['moderationLogs'] as List?)
-              ?.map((e) => ModerationLog.fromMap(e as Map<String, dynamic>))
-              .toList() ??
-          <ModerationLog>[];
-
-      if (userData['accountBlockedUntil'] != null) {
-        final blockedUntil = DateTime.parse(userData['accountBlockedUntil'] as String);
-        if (blockedUntil.isAfter(DateTime.now())) {
-          return ModerationResult(
-            isBlocked: true,
-            message: 'Account is blocked until ${blockedUntil.toLocal()}',
-            negativePoints: currentNegativePoints,
-          );
-        }
-      }
-
-      final now = DateTime.now();
-      final thisMonth = DateTime(now.year, now.month);
-      final attemptsThisMonth = moderationLogs.where((log) {
-        final logDate = log.timestamp;
-        return logDate.isAfter(thisMonth);
-      }).length;
-
-      if (attemptsThisMonth >= maxAttemptsPerMonth) {
-        return ModerationResult(
-          isBlocked: false,
-          message: 'Maximum attempts for this month reached. Please try again next month.',
-          negativePoints: currentNegativePoints,
-          showWarning: true,
-        );
-      }
-
-      final newNegativePoints = currentNegativePoints + 1;
-      final newLog = ModerationLog(
-        timestamp: DateTime.now(),
-        reason: reason,
-        pointsAdded: 1,
-        postId: postId,
-      );
-
-      final updatedLogs = [...moderationLogs, newLog];
-
-      bool shouldBlock = false;
-      DateTime? blockUntil;
-      String message = '';
-
-      if (newNegativePoints >= finalWarningThreshold) {
-        if (newNegativePoints > finalWarningThreshold) {
-          shouldBlock = true;
-          blockUntil = DateTime.now().add(Duration(days: blockDurationYears * 365));
-          message = 'Account blocked for 10 years due to repeated violations.';
-        } else {
-          message = 'FINAL WARNING: One more violation will result in a 10-year account ban.';
-        }
-      } else if (newNegativePoints >= warningThreshold) {
-        message = 'WARNING: You have $newNegativePoints negative points. Continued violations may result in account suspension.';
-      } else {
-        message = 'Content rejected. Negative point added. You now have $newNegativePoints/$maxNegativePoints negative points.';
-      }
-
-      await _firestore.collection('users').doc(userId).update({
-        'negativePoints': newNegativePoints,
-        'moderationLogs': updatedLogs.map((e) => e.toMap()).toList(),
-        if (shouldBlock) 'accountBlockedUntil': blockUntil!.toIso8601String(),
+      await _supabase.from('reports').insert({
+        'content_id': contentId,
+        'content_type': contentType,
+        'reported_by': reportedBy,
+        'reason': reason,
+        'created_at': DateTime.now().toIso8601String(),
+        'status': 'pending',
       });
-
-      return ModerationResult(
-        isBlocked: shouldBlock,
-        message: message,
-        negativePoints: newNegativePoints,
-        showWarning: newNegativePoints >= warningThreshold,
-        isFinalWarning: newNegativePoints == finalWarningThreshold,
-      );
     } catch (e) {
-      throw Exception('Failed to add negative point: $e');
+      // Silently fail or log
     }
   }
 
   Future<bool> canUserPost(String userId) async {
-    try {
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists) return false;
-
-      final userData = userDoc.data()!;
-      
-      if (userData['accountBlockedUntil'] != null) {
-        final blockedUntil = DateTime.parse(userData['accountBlockedUntil'] as String);
-        if (blockedUntil.isAfter(DateTime.now())) {
-          return false;
-        }
-      }
-
-      final negativePoints = (userData['negativePoints'] as num?)?.toInt() ?? 0;
-      if (negativePoints >= maxNegativePoints) {
-        return false;
-      }
-
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<void> resetNegativePoints(String userId) async {
-    await _firestore.collection('users').doc(userId).update({
-      'negativePoints': 0,
-      'accountBlockedUntil': FieldValue.delete(),
-    });
+    final status = await getModerationStatus(userId);
+    return status.canPost;
   }
 
   Future<ModerationStatus> getModerationStatus(String userId) async {
-    try {
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists) {
-        throw Exception('User not found');
-      }
-
-      final userData = userDoc.data()!;
-      final negativePoints = (userData['negativePoints'] as num?)?.toInt() ?? 0;
-      final accountBlockedUntil = userData['accountBlockedUntil'] as String?;
-      
-      final isBlocked = accountBlockedUntil != null && 
-          DateTime.parse(accountBlockedUntil).isAfter(DateTime.now());
-
+    final userData = await _supabase
+        .from('users')
+        .select('account_blocked_until, is_banned, negative_points')
+        .eq('id', userId)
+        .maybeSingle();
+    
+    if (userData == null) {
       return ModerationStatus(
-        negativePoints: negativePoints,
-        maxNegativePoints: maxNegativePoints,
-        isBlocked: isBlocked,
-        blockedUntil: accountBlockedUntil != null 
-            ? DateTime.parse(accountBlockedUntil)
-            : null,
-        showWarning: negativePoints >= warningThreshold,
-        isFinalWarning: negativePoints == finalWarningThreshold,
+        isBlocked: false,
+        isBanned: false,
+        negativePoints: 0,
       );
-    } catch (e) {
-      throw Exception('Failed to get moderation status: $e');
     }
+    
+    final isBanned = userData['is_banned'] == true;
+    final blockedUntilStr = userData['account_blocked_until'] as String?;
+    DateTime? blockedUntil;
+    bool isBlocked = false;
+
+    if (blockedUntilStr != null) {
+      blockedUntil = DateTime.parse(blockedUntilStr);
+      if (blockedUntil.isAfter(DateTime.now())) {
+        isBlocked = true;
+      }
+    }
+    
+    final negativePoints = (userData['negative_points'] as num?)?.toInt() ?? 0;
+    
+    String? message;
+    if (isBanned) {
+      message = 'Your account has been permanently banned.';
+    } else if (isBlocked) {
+      message = 'Your account is blocked until ${blockedUntilStr?.split('T').first}.';
+    }
+    
+    return ModerationStatus(
+      isBlocked: isBlocked,
+      isBanned: isBanned,
+      blockedUntil: blockedUntil,
+      negativePoints: negativePoints,
+      message: message,
+    );
+  }
+
+  Future<({bool showWarning, bool isFinalWarning, bool isBlocked, String message})> addNegativePoint({
+    required String userId,
+    required String reason,
+  }) async {
+    final userData = await _supabase
+        .from('users')
+        .select('negative_points')
+        .eq('id', userId)
+        .maybeSingle();
+    
+    final currentPoints = (userData?['negative_points'] as num?)?.toInt() ?? 0;
+    final nextPoints = currentPoints + 1;
+    
+    final updates = <String, dynamic>{
+      'negative_points': nextPoints,
+    };
+    
+    bool isBlocked = false;
+    DateTime? blockedUntil;
+    
+    if (nextPoints >= 10) {
+      blockedUntil = DateTime.now().add(const Duration(days: 7));
+      updates['account_blocked_until'] = blockedUntil.toIso8601String();
+      isBlocked = true;
+    } else if (nextPoints >= 5) {
+      blockedUntil = DateTime.now().add(const Duration(days: 1));
+      updates['account_blocked_until'] = blockedUntil.toIso8601String();
+      isBlocked = true;
+    }
+    
+    await _supabase
+        .from('users')
+        .update(updates)
+        .eq('id', userId);
+        
+    await _supabase.from('moderation_logs').insert({
+      'user_id': userId,
+      'action': 'negative_point',
+      'reason': reason,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    String message = 'Content flagged. You now have $nextPoints/10 negative points.';
+    if (isBlocked) {
+      message = 'Content flagged. Your account is blocked until ${blockedUntil?.toIso8601String().split('T').first}.';
+    }
+
+    return (
+      showWarning: true,
+      isFinalWarning: nextPoints >= 8,
+      isBlocked: isBlocked,
+      message: message,
+    );
   }
 }
-
-class ModerationResult {
-  final bool isBlocked;
-  final String message;
-  final int negativePoints;
-  final bool showWarning;
-  final bool isFinalWarning;
-
-  ModerationResult({
-    required this.isBlocked,
-    required this.message,
-    required this.negativePoints,
-    this.showWarning = false,
-    this.isFinalWarning = false,
-  });
-}
-
-class ModerationStatus {
-  final int negativePoints;
-  final int maxNegativePoints;
-  final bool isBlocked;
-  final DateTime? blockedUntil;
-  final bool showWarning;
-  final bool isFinalWarning;
-
-  ModerationStatus({
-    required this.negativePoints,
-    required this.maxNegativePoints,
-    required this.isBlocked,
-    this.blockedUntil,
-    required this.showWarning,
-    required this.isFinalWarning,
-  });
-}
-

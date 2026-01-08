@@ -1,25 +1,46 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_constants.dart';
-import '../models/user_model.dart';
 
 class PointsService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
+  static const int maxPointsPerDay = 1000;
+  static const int tasbihPointsPer100 = 10;
   static const double farzNamazPoints = 1.0;
   static const double nafalNamazPoints = 0.65;
-  static const double maxPointsPerActivity = 5.0;
-  static const double maxPointsPerDay = 10.0;
-  static const double tasbihPointsPer100 = 2.0;
 
-  Future<double> calculateNamazPoints({
-    required int farzCount,
-    required int nafalCount,
+  Future<void> addHabitPoints({
+    required String userId,
+    required double points,
   }) async {
-    double points = 0.0;
-    points += (farzCount * farzNamazPoints).clamp(0.0, maxPointsPerActivity);
-    points += (nafalCount * nafalNamazPoints).clamp(0.0, maxPointsPerActivity);
-    return points.clamp(0.0, maxPointsPerDay);
+    try {
+      final userData = await _supabase
+          .from(AppConstants.collectionUsers)
+          .select('points')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (userData != null) {
+        final currentPoints = (userData['points'] ?? 0) as int;
+        final newPoints = currentPoints + points.toInt();
+
+        await _supabase
+            .from(AppConstants.collectionUsers)
+            .update({'points': newPoints})
+            .eq('id', userId);
+        
+        await _recordPointTransaction(userId, points, 'habit');
+      }
+    } catch (e) {
+      // Silently fail
+    }
+  }
+
+  Future<void> addDeedPoints({
+    required String userId,
+    required double points,
+  }) async {
+    await addHabitPoints(userId: userId, points: points);
   }
 
   Future<void> addNamazPoints({
@@ -27,144 +48,91 @@ class PointsService {
     required int farzCount,
     required int nafalCount,
   }) async {
-    final today = DateTime.now();
-    final dateKey = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-    final points = await calculateNamazPoints(farzCount: farzCount, nafalCount: nafalCount);
-
-    await _firestore.collection('daily_points').doc('$userId-$dateKey').set({
-      'userId': userId,
-      'date': dateKey,
-      'namazPoints': points,
-      'farzCount': farzCount,
-      'nafalCount': nafalCount,
-      'totalPoints': FieldValue.increment(points),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await _checkAndUpdateStreak(userId, dateKey);
+    final points = (farzCount * farzNamazPoints) + (nafalCount * nafalNamazPoints);
+    await addHabitPoints(userId: userId, points: points);
+    
+    if (farzCount > 0) {
+      await _recordPointTransaction(userId, farzCount * farzNamazPoints, 'namaz_farz');
+    }
+    if (nafalCount > 0) {
+      await _recordPointTransaction(userId, nafalCount * nafalNamazPoints, 'namaz_nafal');
+    }
   }
 
-  Future<void> addTasbihPoints({
-    required String userId,
-    required int count,
-  }) async {
+  Future<void> addTasbihPoints(String userId, int count) async {
     final points = (count / 100).floor() * tasbihPointsPer100;
-    if (points <= 0) return;
-
-    final today = DateTime.now();
-    final dateKey = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-    await _firestore.collection('daily_points').doc('$userId-$dateKey').set({
-      'userId': userId,
-      'date': dateKey,
-      'tasbihPoints': FieldValue.increment(points),
-      'tasbihCount': FieldValue.increment(count),
-      'totalPoints': FieldValue.increment(points),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await _checkAndUpdateStreak(userId, dateKey);
-  }
-
-  Future<void> _checkAndUpdateStreak(String userId, String dateKey) async {
-    final doc = await _firestore.collection('daily_points').doc('$userId-$dateKey').get();
-    if (!doc.exists) return;
-
-    final data = doc.data()!;
-    final totalPoints = (data['totalPoints'] ?? 0.0) as double;
-
-    if (totalPoints >= 10.0) {
-      await _updateStreak(userId, dateKey);
-    } else {
-      await _breakStreak(userId);
+    if (points > 0) {
+      await addHabitPoints(userId: userId, points: points.toDouble());
+      await _recordPointTransaction(userId, points.toDouble(), 'tasbih');
     }
   }
 
-  Future<void> _breakStreak(String userId) async {
-    await _firestore.collection('users').doc(userId).update({
-      'streakDays': 0,
-      'lastStreakDate': null,
-    });
-  }
+  Future<int> getUserPoints(String userId) async {
+    try {
+      final userData = await _supabase
+          .from(AppConstants.collectionUsers)
+          .select('points')
+          .eq('id', userId)
+          .maybeSingle();
 
-  Future<void> _updateStreak(String userId, String dateKey) async {
-    final userDoc = await _firestore.collection('users').doc(userId).get();
-    if (!userDoc.exists) return;
-
-    final userData = userDoc.data()!;
-    final lastStreakDate = userData['lastStreakDate'] as String?;
-    final currentStreak = userData['streakDays'] ?? 0;
-
-    final today = DateTime.now();
-    final yesterday = today.subtract(const Duration(days: 1));
-    final yesterdayKey = '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
-
-    int newStreak = currentStreak;
-    if (lastStreakDate == yesterdayKey || lastStreakDate == dateKey) {
-      newStreak = currentStreak + 1;
-    } else if (lastStreakDate != dateKey) {
-      newStreak = 1;
+      return (userData?['points'] ?? 0) as int;
+    } catch (e) {
+      return 0;
     }
-
-    await _firestore.collection('users').doc(userId).update({
-      'streakDays': newStreak,
-      'lastStreakDate': dateKey,
-    });
-  }
-
-  Future<double> getTodayPoints(String userId) async {
-    final today = DateTime.now();
-    final dateKey = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-    final doc = await _firestore.collection('daily_points').doc('$userId-$dateKey').get();
-    if (!doc.exists) return 0.0;
-
-    final data = doc.data()!;
-    return (data['totalPoints'] ?? 0.0) as double;
   }
 
   Future<Map<String, dynamic>> getDailyStats(String userId) async {
-    final today = DateTime.now();
-    final dateKey = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-    final doc = await _firestore.collection('daily_points').doc('$userId-$dateKey').get();
-    if (!doc.exists) {
+    try {
+      final today = DateTime.now().toIso8601String().split('T').first;
+      final startOfDay = '${today}T00:00:00.000000';
+      
+      final data = await _supabase
+          .from('point_transactions')
+          .select('amount, type')
+          .eq('user_id', userId)
+          .gte('created_at', startOfDay);
+      
+      double totalPointsToday = 0;
+      int farzCount = 0;
+      int nafalCount = 0;
+      
+      for (final item in data) {
+        final amount = (item['amount'] as num).toDouble();
+        final type = item['type'] as String;
+        
+        totalPointsToday += amount;
+        if (type == 'namaz_farz') farzCount++;
+        if (type == 'namaz_nafal') nafalCount++;
+      }
+      
+      return {
+        'totalPoints': totalPointsToday,
+        'farzCount': farzCount,
+        'nafalCount': nafalCount,
+        'maxPoints': maxPointsPerDay.toDouble(),
+        'percentage': (totalPointsToday / maxPointsPerDay).clamp(0.0, 1.0),
+      };
+    } catch (e) {
       return {
         'totalPoints': 0.0,
         'farzCount': 0,
         'nafalCount': 0,
-        'tasbihCount': 0,
-        'tasbihPoints': 0.0,
+        'maxPoints': maxPointsPerDay.toDouble(),
+        'percentage': 0.0,
       };
     }
-
-    final data = doc.data()!;
-    return {
-      'totalPoints': (data['totalPoints'] ?? 0.0) as double,
-      'farzCount': data['farzCount'] ?? 0,
-      'nafalCount': data['nafalCount'] ?? 0,
-      'tasbihCount': data['tasbihCount'] ?? 0,
-      'tasbihPoints': (data['tasbihPoints'] ?? 0.0) as double,
-    };
   }
 
-  Future<void> addHabitPoints({
-    required String userId,
-    required double points,
-  }) async {
-    final today = DateTime.now();
-    final dateKey = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-    await _firestore.collection('daily_points').doc('$userId-$dateKey').set({
-      'userId': userId,
-      'date': dateKey,
-      'habitPoints': FieldValue.increment(points),
-      'totalPoints': FieldValue.increment(points),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await _checkAndUpdateStreak(userId, dateKey);
+  Future<void> _recordPointTransaction(String userId, double amount, String type) async {
+    try {
+      await _supabase.from('point_transactions').insert({
+        'user_id': userId,
+        'amount': amount,
+        'type': type,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      // Table might not exist
+    }
   }
 }
-

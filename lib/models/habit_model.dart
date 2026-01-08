@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../utils/app_constants.dart';
+﻿import '../utils/app_constants.dart';
 
 class HabitModel {
   final String id;
@@ -34,47 +33,58 @@ class HabitModel {
     this.autoRemoveAfterCompletion = false,
   });
 
-  factory HabitModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-
+  factory HabitModel.fromMap(Map<String, dynamic> data) {
     return HabitModel(
-      id: doc.id,
-      userId: data['userId'] ?? '',
-      habitType: data['habitType'] ?? AppConstants.habitCustom,
-      habitName: data['habitName'] ?? '',
-      targetValue: data['targetValue'] ?? 1,
-      currentValue: data['currentValue'] ?? 0,
-      lastCompleted: data['lastCompleted'] != null
-          ? (data['lastCompleted'] as Timestamp).toDate()
-          : null,
-      streakDays: data['streakDays'] ?? 0,
-      totalCompletions: data['totalCompletions'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      id: data['id']?.toString() ?? '',
+      userId: data['user_id'] ?? data['userId'] ?? '',
+      habitType: data['habit_type'] ?? data['habitType'] ?? AppConstants.habitCustom,
+      habitName: data['habit_name'] ?? data['habitName'] ?? '',
+      targetValue: data['target_value'] ?? data['targetValue'] ?? 1,
+      currentValue: data['current_value'] ?? data['currentValue'] ?? 0,
+      lastCompleted: data['last_completed'] != null
+          ? (data['last_completed'] is String
+              ? DateTime.parse(data['last_completed'])
+              : data['last_completed'] as DateTime?)
+          : (data['lastCompleted'] != null
+              ? (data['lastCompleted'] is String
+                  ? DateTime.parse(data['lastCompleted'])
+                  : data['lastCompleted'] as DateTime?)
+              : null),
+      streakDays: data['streak_days'] ?? data['streakDays'] ?? 0,
+      totalCompletions: data['total_completions'] ?? data['totalCompletions'] ?? 0,
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+          : (data['createdAt'] is String ? DateTime.parse(data['createdAt']) : DateTime.now()),
       syncStatus: true,
-      durationDays: data['durationDays'],
-      endDate: data['endDate'] != null
-          ? (data['endDate'] as Timestamp).toDate()
-          : null,
-      autoRemoveAfterCompletion: data['autoRemoveAfterCompletion'] ?? false,
+      durationDays: data['duration_days'] ?? data['durationDays'],
+      endDate: data['end_date'] != null
+          ? (data['end_date'] is String
+              ? DateTime.parse(data['end_date'])
+              : data['end_date'] as DateTime?)
+          : (data['endDate'] != null
+              ? (data['endDate'] is String
+                  ? DateTime.parse(data['endDate'])
+                  : data['endDate'] as DateTime?)
+              : null),
+      autoRemoveAfterCompletion: (data['auto_remove_after_completion'] ?? data['autoRemoveAfterCompletion']) ?? false,
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toMap() {
     return {
-      'userId': userId,
-      'habitType': habitType,
-      'habitName': habitName,
-      'targetValue': targetValue,
-      'currentValue': currentValue,
-      'lastCompleted': lastCompleted != null
-          ? Timestamp.fromDate(lastCompleted!)
-          : null,
-      'streakDays': streakDays,
-      'totalCompletions': totalCompletions,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'durationDays': durationDays,
-      'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
-      'autoRemoveAfterCompletion': autoRemoveAfterCompletion,
+      'id': id,
+      'user_id': userId,
+      'habit_type': habitType,
+      'habit_name': habitName,
+      'target_value': targetValue,
+      'current_value': currentValue,
+      'last_completed': lastCompleted?.toIso8601String(),
+      'streak_days': streakDays,
+      'total_completions': totalCompletions,
+      'created_at': createdAt.toIso8601String(),
+      'duration_days': durationDays,
+      'end_date': endDate?.toIso8601String(),
+      'auto_remove_after_completion': autoRemoveAfterCompletion,
     };
   }
 
@@ -242,33 +252,33 @@ class HabitModel {
   static String getHabitIcon(String habitType) {
     switch (habitType) {
       case AppConstants.habitTasbeeh:
-        return '📿';
+        return 'ðŸ“¿';
       case AppConstants.habitSalah:
-        return '🕌';
+        return 'ðŸ•Œ';
       case AppConstants.habitQuran:
-        return '📖';
+        return 'ðŸ“–';
       case AppConstants.habitDua:
-        return '🤲';
+        return 'ðŸ¤²';
       case AppConstants.habitTahajjud:
-        return '🌟';
+        return 'ðŸŒŸ';
       case AppConstants.habitZikr:
-        return '💚';
+        return 'ðŸ’š';
       case AppConstants.habitFasting:
-        return '🌙';
+        return 'ðŸŒ™';
       case AppConstants.habitSadaqah:
-        return '💝';
+        return 'ðŸ’';
       case AppConstants.habitCharity:
-        return '❤️';
+        return 'â¤ï¸';
       case AppConstants.habitLearning:
-        return '📚';
+        return 'ðŸ“š';
       case AppConstants.habitGratitude:
-        return '🙏';
+        return 'ðŸ™';
       case AppConstants.habitPatience:
-        return '⏳';
+        return 'â³';
       case AppConstants.habitKindness:
-        return '🤝';
+        return 'ðŸ¤';
       default:
-        return '✨';
+        return 'âœ¨';
     }
   }
 

@@ -1,88 +1,84 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InterestsService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  static const List<String> trendingInterests = [
-    'Quran',
-    'Hadith',
-    'Salah',
-    'Dhikr',
-    'Dua',
-    'Islamic Learning',
-    'Charity',
-    'Hajj & Umrah',
-    'Ramadan',
-    'Islamic History',
-  ];
-
-  Future<List<String>> getTrendingInterests({int limit = 10}) async {
+  Future<List<String>> getUserInterests(String userId) async {
     try {
-      final now = DateTime.now();
-      final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+      final userData = await _supabase
+          .from('users')
+          .select('interests')
+          .eq('id', userId)
+          .maybeSingle();
 
-      final postsSnapshot = await _firestore
-          .collection('deeds')
-          .where('createdAt', isGreaterThan: Timestamp.fromDate(thirtyDaysAgo))
-          .get();
-
-      final interestCounts = <String, int>{};
-
-      for (final doc in postsSnapshot.docs) {
-        final data = doc.data();
-        final interests = List<String>.from(data['interests'] ?? []);
-        for (final interest in interests) {
-          interestCounts[interest] = (interestCounts[interest] ?? 0) + 1;
-        }
-      }
-
-      final sortedInterests = interestCounts.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-
-      final trending = sortedInterests
-          .take(limit)
-          .map((e) => e.key)
-          .toList();
-
-      final defaultInterests = trendingInterests
-          .where((interest) => !trending.contains(interest))
-          .take(limit - trending.length)
-          .toList();
-
-      return [...trending, ...defaultInterests].take(limit).toList();
+      return List<String>.from(userData?['interests'] ?? []);
     } catch (e) {
-      return trendingInterests.take(limit).toList();
+      return [];
+    }
+  }
+
+  Future<void> updateUserInterests(String userId, List<String> interests) async {
+    try {
+      await _supabase
+          .from('users')
+          .update({'interests': interests})
+          .eq('id', userId);
+    } catch (e) {
+      // Silently fail
     }
   }
 
   Future<void> incrementInterestCount(String interest) async {
     try {
-      await _firestore
-          .collection('interests')
-          .doc(interest.toLowerCase().replaceAll(' ', '_'))
-          .set({
-        'name': interest,
-        'count': FieldValue.increment(1),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // Try to update existing record
+      final existing = await _supabase
+          .from('interest_stats')
+          .select()
+          .eq('name', interest)
+          .maybeSingle();
+
+      if (existing != null) {
+        await _supabase
+            .from('interest_stats')
+            .update({'count': (existing['count'] as int) + 1})
+            .eq('name', interest);
+      } else {
+        await _supabase.from('interest_stats').insert({
+          'name': interest,
+          'count': 1,
+        });
+      }
     } catch (e) {
-      // Handle error silently
+      // Table might not exist yet, ignore
     }
   }
 
-  Future<List<String>> searchInterests(String query) async {
+  Future<List<String>> getTrendingInterests({int limit = 10}) async {
     try {
-      if (query.isEmpty) {
-        return trendingInterests;
-      }
-
-      final queryLower = query.toLowerCase();
-      return trendingInterests
-          .where((interest) => interest.toLowerCase().contains(queryLower))
-          .toList();
+      final data = await _supabase
+          .from('interest_stats')
+          .select('name')
+          .order('count', ascending: false)
+          .limit(limit);
+      
+      return data.map((item) => item['name'] as String).toList();
     } catch (e) {
-      return [];
+      return getAvailableInterests().take(5).toList();
     }
+  }
+
+  List<String> getAvailableInterests() {
+    return [
+      'Quran',
+      'Hadith',
+      'Prayer',
+      'Fasting',
+      'Charity',
+      'Islamic History',
+      'Arabic Language',
+      'Tafsir',
+      'Fiqh',
+      'Seerah',
+    ];
   }
 }
-

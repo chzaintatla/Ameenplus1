@@ -1,23 +1,22 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
-import '../firebase/firebase_ready_provider.dart';
+import '../supabase/supabase_ready_provider.dart';
 import '../network/repositories/auth_repository.dart';
 
 final authStateProvider = StreamProvider<User?>((ref) {
-  final readyAsync = ref.watch(firebaseReadyProvider);
+  final readyAsync = ref.watch(supabaseReadyProvider);
 
   return readyAsync.maybeWhen(
-    data: (ready) => ready ? FirebaseAuth.instance.authStateChanges() : const Stream<User?>.empty(),
+    data: (ready) => ready ? Supabase.instance.client.auth.onAuthStateChange.map((event) => event.session?.user) : const Stream<User?>.empty(),
     orElse: () => const Stream<User?>.empty(),
   );
 });
 
-final firebaseAuthProvider = Provider<FirebaseAuth?>((ref) {
-  final readyAsync = ref.watch(firebaseReadyProvider);
+final supabaseAuthProvider = Provider<SupabaseClient?>((ref) {
+  final readyAsync = ref.watch(supabaseReadyProvider);
   return readyAsync.maybeWhen(
-    data: (ready) => ready ? FirebaseAuth.instance : null,
+    data: (ready) => ready ? Supabase.instance.client : null,
     orElse: () => null,
   );
 });
@@ -28,7 +27,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 final currentUserProvider = StreamProvider<User?>((ref) {
   final repository = ref.watch(authRepositoryProvider);
-  return repository.authStateChanges;
+  return repository.authStateChanges.map((event) => event.session?.user);
 });
 
 final currentUserModelProvider = StreamProvider<UserModel?>((ref) {
@@ -38,13 +37,13 @@ final currentUserModelProvider = StreamProvider<UserModel?>((ref) {
     data: (user) {
       if (user == null) return const Stream<UserModel?>.empty();
 
-      return FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots()
-          .map((doc) {
-            if (!doc.exists) return null;
-            return UserModel.fromFirestore(doc);
+      return Supabase.instance.client
+          .from('users')
+          .stream(primaryKey: ['id'])
+          .eq('id', user.id)
+          .map((data) {
+            if (data.isEmpty) return null;
+            return UserModel.fromMap(data.first);
           });
     },
     loading: () => const Stream<UserModel?>.empty(),

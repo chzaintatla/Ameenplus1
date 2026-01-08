@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_compass/flutter_compass.dart';
@@ -225,7 +225,7 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'You are pointing towards Qibla! (${angleDifference.toStringAsFixed(1)}° off)',
+                            'You are pointing towards Qibla! (${angleDifference.toStringAsFixed(1)}Â° off)',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: Colors.green,
                                 ),
@@ -284,7 +284,7 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'The Kaaba image at the center points towards the Holy Kaaba in Mecca',
+                        'The Kaaba image at the center points towards the Holy Kaaba in makkah',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -326,12 +326,12 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            'Center image = Kaaba (rotate device to align)',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
+                         // Text(
+                           // 'Center image = Kaaba (rotate device to align)',
+                            //style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            //  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                           // ),
+                         // ),
                         ],
                       ),
                     ],
@@ -364,14 +364,14 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
                       _buildInfoRow(
                         context,
                         'Direction',
-                        '${qiblaDirection.toStringAsFixed(1)}°',
+                        '${qiblaDirection.toStringAsFixed(1)}Â°',
                         Icons.navigation,
                       ),
                       const Divider(),
                       _buildInfoRow(
                         context,
                         'Compass Heading',
-                        '${compassHeading.toStringAsFixed(1)}°',
+                        '${compassHeading.toStringAsFixed(1)}Â°',
                         Icons.compass_calibration,
                       ),
                       if (latitude != null && longitude != null) ...[
@@ -520,7 +520,7 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
         : '';
     
     if (compassMsg.isNotEmpty && locationMsg.isNotEmpty) {
-      return '$compassMsg • $locationMsg';
+      return '$compassMsg â€¢ $locationMsg';
     } else if (compassMsg.isNotEmpty) {
       return compassMsg;
     } else if (locationMsg.isNotEmpty) {

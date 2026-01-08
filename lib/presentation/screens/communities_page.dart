@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -58,31 +58,46 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
           ),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            onPressed: () {
-              context.push('/ai-chatbot');
-            },
-            heroTag: 'chatbot',
-            backgroundColor: Theme.of(context).colorScheme.secondary,
-            child: const Icon(Icons.chat_bubble_outline),
-          ),
-          const SizedBox(height: 16),
-          FloatingActionButton.extended(
-            onPressed: () {
-              _showCreateCommunityDialog(context, ref);
-            },
-            heroTag: 'create-community',
-            icon: const Icon(Icons.add),
-            label: const Text('Create Community'),
-            backgroundColor: Theme.of(context).brightness == Brightness.light
-                ? Colors.green
-                : Theme.of(context).colorScheme.primary,
-            foregroundColor: Colors.white,
-          ),
-        ],
+      floatingActionButton: Align(
+        alignment: Alignment.bottomRight,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            FloatingActionButton(
+              onPressed: () {
+                context.push('/ai-chatbot');
+              },
+              heroTag: 'chatbot',
+              backgroundColor: Theme.of(context).brightness == Brightness.light
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.secondary,
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.mode(
+                  Colors.black87,
+                  BlendMode.srcIn,
+                ),
+                child: Image.asset(
+                  'assets/images/chatbot.png',
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FloatingActionButton.extended(
+              onPressed: () {
+                _showCreateCommunityDialog(context, ref);
+              },
+              heroTag: 'create-community',
+              icon: const Icon(Icons.add),
+              label: const Text('Create Community'),
+              backgroundColor: Colors.green.shade800,
+              foregroundColor: Colors.white,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -161,9 +176,9 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
                   id: const Uuid().v4(),
                   name: nameController.text.trim(),
                   description: descController.text.trim(),
-                  creatorId: user.uid,
-                  members: [user.uid],
-                  admins: [user.uid],
+                  createdBy: user.id,
+                  members: [user.id],
+                  admins: [user.id],
                   category: selectedCategory,
                   isPublic: true,
                   createdAt: DateTime.now(),
@@ -298,7 +313,7 @@ class _MyCommunitiesTab extends ConsumerWidget {
             itemCount: communities.length,
             itemBuilder: (context, index) {
               final community = communities[index];
-              final isOwner = currentUser?.uid == community.creatorId;
+              final isOwner = currentUser?.id == community.creatorId;
               
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -307,7 +322,7 @@ class _MyCommunitiesTab extends ConsumerWidget {
                     backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                     child: Icon(
                       Icons.groups_rounded,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: Colors.white,
                     ),
                   ),
                   title: Row(
@@ -324,7 +339,7 @@ class _MyCommunitiesTab extends ConsumerWidget {
                             'Owner',
                             style: TextStyle(
                               fontSize: 10,
-                              color: Theme.of(context).colorScheme.primary,
+                              color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -431,7 +446,7 @@ class _ExploreCommunitiesTab extends ConsumerWidget {
             itemCount: communities.length,
             itemBuilder: (context, index) {
               final community = communities[index];
-              final isMember = currentUser != null && community.members.contains(currentUser.uid);
+              final isMember = currentUser != null && community.members.contains(currentUser.id);
               
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -440,7 +455,7 @@ class _ExploreCommunitiesTab extends ConsumerWidget {
                     backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                     child: Icon(
                       Icons.groups_rounded,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: Colors.white,
                     ),
                   ),
                   title: Text(community.name),
@@ -471,7 +486,7 @@ class _ExploreCommunitiesTab extends ConsumerWidget {
 
                             try {
                               final repository = ref.read(communityRepositoryProvider);
-                              await repository.joinCommunity(community.id, currentUser.uid);
+                              await repository.joinCommunity(community.id, currentUser.id);
                               if (context.mounted) {
                                 ref.invalidate(userCommunitiesProvider);
                                 ref.invalidate(communitiesProvider);
