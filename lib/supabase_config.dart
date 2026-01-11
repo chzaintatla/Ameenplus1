@@ -8,7 +8,7 @@ class SupabaseConfig {
   static const String supabaseUrl = 'https://drvzadcgkfranrcmaixs.supabase.co';
   
   // Your Supabase anon public key
-  static const String supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRydnphZGNna2ZyYW5yY21haXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY0MzM2NzMsImV4cCI6MjA1MjAwOTY3M30.sb_publishable_9fm5xzxTFQA5RUeGdj_X5w_KSBbE';
+  static const String supabaseAnonKey = 'sb_publishable_9fm5xzxTFQA5RUeGdj_X5w_KSBbEnKP';
   
   // Google Client IDs for OAuth
   static const String googleIosClientId = '105816685190-751mhaubnde07nfirqs59ofm9gno18f5.apps.googleusercontent.com';

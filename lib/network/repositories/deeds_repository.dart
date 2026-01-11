@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/app_database.dart';
 import '../../utils/xp_service.dart';
+import '../../services/storage_service.dart';
 import 'notification_repository.dart';
 import '../../models/deed_model.dart';
 
@@ -14,6 +15,8 @@ class DeedsRepository {
   final XPService _xpService = XPService();
   final NotificationRepository _notificationRepo = NotificationRepository();
 
+  /// Create a deed/post - saved with isValidated: false initially
+  /// Backend validation will update isValidated to true if content is valid
   Future<DeedModel> createDeed({
     required String userId,
     required String userName,
@@ -29,6 +32,7 @@ class DeedsRepository {
     String? filePath,
     String? mediaType,
     List<String> interests = const [],
+    // Note: isValidated should always be false when creating - backend will validate
     bool isValidated = false,
     String? validationReason,
     double? validationConfidence,
@@ -47,11 +51,12 @@ class DeedsRepository {
           final fileName = '${const Uuid().v4()}.jpg';
           final filePath = '$userId/$fileName';
           
-          await _supabase.storage
-              .from('deeds')
-              .upload(filePath, file, fileOptions: const FileOptions(contentType: 'image/jpeg'));
-          
-          imageUrl = _supabase.storage.from('deeds').getPublicUrl(filePath);
+          imageUrl = await StorageService.uploadFile(
+            bucket: 'deeds',
+            filePath: filePath,
+            file: file,
+            contentType: 'image/jpeg',
+          );
           mediaUrls.add(imageUrl);
         }
       }
@@ -66,11 +71,12 @@ class DeedsRepository {
           final fileName = '${const Uuid().v4()}.mp4';
           final filePath = '$userId/$fileName';
           
-          await _supabase.storage
-              .from('deeds')
-              .upload(filePath, file, fileOptions: const FileOptions(contentType: 'video/mp4'));
-          
-          final videoUrl = _supabase.storage.from('deeds').getPublicUrl(filePath);
+          final videoUrl = await StorageService.uploadFile(
+            bucket: 'deeds',
+            filePath: filePath,
+            file: file,
+            contentType: 'video/mp4',
+          );
           mediaUrls.add(videoUrl);
         }
       }
@@ -99,16 +105,18 @@ class DeedsRepository {
           final fileName = '${const Uuid().v4()}.$extension';
           final storagePath = '$userId/$fileName';
           
-          await _supabase.storage
-              .from('deeds')
-              .upload(storagePath, file, fileOptions: FileOptions(contentType: contentType));
-          
-          final fileUrl = _supabase.storage.from('deeds').getPublicUrl(storagePath);
+          final fileUrl = await StorageService.uploadFile(
+            bucket: 'deeds',
+            filePath: storagePath,
+            file: file,
+            contentType: contentType,
+          );
           mediaUrls.add(fileUrl);
         }
       }
 
       final deedId = const Uuid().v4();
+      final now = DateTime.now();
 
       final deed = DeedModel(
         id: deedId,
@@ -125,19 +133,21 @@ class DeedsRepository {
         mediaUrls: mediaUrls,
         mediaType: mediaType,
         interests: interests,
-        isValidated: isValidated,
-        validationReason: validationReason,
-        validationConfidence: validationConfidence,
-        createdAt: DateTime.now(),
+        isValidated: false, // Always false initially - backend will validate
+        validationReason: null,
+        validationConfidence: null,
+        createdAt: now,
       );
 
+      // Save to Supabase database - backend validation will update isValidated
       await _supabase
           .from(AppConstants.collectionDeeds)
           .insert(deed.toMap());
 
       await _localDb.cacheDeed(deed.toLocal());
 
-      await _xpService.awardXPForDeed(userId);
+      // Don't award XP yet - wait for backend validation
+      // XP will be awarded when backend sets isValidated to true
 
       return deed;
     } catch (e) {
@@ -145,15 +155,18 @@ class DeedsRepository {
     }
   }
 
+  /// Get deeds feed - only returns validated posts
   Stream<List<DeedModel>> getDeedsFeed({int limit = 20}) {
     return _supabase
         .from(AppConstants.collectionDeeds)
         .stream(primaryKey: ['id'])
+        .eq('is_validated', true) // Only show validated posts
         .order('created_at', ascending: false)
         .limit(limit)
         .map((data) => data.map((item) => DeedModel.fromMap(item)).toList());
   }
 
+  /// Get user deeds - shows all posts (validated and pending) for the user
   Stream<List<DeedModel>> getUserDeeds(String userId, {int limit = 50}) {
     return _supabase
         .from(AppConstants.collectionDeeds)
@@ -289,15 +302,29 @@ class DeedsRepository {
       throw Exception('Unauthorized');
     }
 
+    // Delete media from Supabase Storage
     final imageUrl = deedData['image_url'];
     if (imageUrl != null && imageUrl.toString().contains('supabase')) {
       try {
-        // Extract path from URL and delete from storage
         final uri = Uri.parse(imageUrl);
         final path = uri.pathSegments.last;
-        await _supabase.storage.from('deeds').remove([path]);
+        await StorageService.deleteFile(bucket: 'deeds', filePath: path);
       } catch (e) {
         // Ignore storage deletion errors
+      }
+    }
+
+    // Delete media URLs
+    final mediaUrls = List<String>.from(deedData['media_urls'] ?? []);
+    for (final url in mediaUrls) {
+      if (url.contains('supabase')) {
+        try {
+          final uri = Uri.parse(url);
+          final path = uri.pathSegments.last;
+          await StorageService.deleteFile(bucket: 'deeds', filePath: path);
+        } catch (e) {
+          // Ignore storage deletion errors
+        }
       }
     }
 

@@ -9,7 +9,6 @@ import '../../providers/profile_providers.dart';
 import '../../providers/follow_providers.dart';
 import '../../providers/deeds_providers.dart';
 import '../../network/repositories/user_profile_repository.dart';
-import '../../models/deed_model.dart';
 import '../../widgets/deed_card.dart';
 
 final userProfilePreviewProvider = FutureProvider.family<UserProfile?, String>((ref, userId) async {
@@ -54,7 +53,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
     final mediaQuery = MediaQuery.of(context);
     final currentUser = ref.watch(authStateProvider).value;
     final profileAsync = ref.watch(userProfilePreviewProvider(userId));
-    final isOwnProfile = currentUser?.id == userId;
+    final isOwnProfile = currentUser?.uid == userId;
 
     return Scaffold(
       appBar: AppBar(
@@ -108,7 +107,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                           ),
                           SizedBox(height: mediaQuery.size.height * 0.02),
                           Text(
-                            profile.displayName ?? 'User',
+                            profile.displayName,
                             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -118,7 +117,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                           ),
                           if (!isOwnProfile) ...[
                             SizedBox(height: mediaQuery.size.height * 0.015),
-                            _buildFollowButton(context, ref, currentUser?.id ?? '', userId),
+                            _buildFollowButton(context, ref, currentUser?.uid ?? '', userId),
                           ],
                           SizedBox(height: mediaQuery.size.height * 0.015),
                           Row(
@@ -436,7 +435,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                             child: DeedCard(
                               deed: deed,
-                              currentUserId: ref.read(authStateProvider).value?.id,
+                              currentUserId: ref.read(authStateProvider).value?.uid,
                             ),
                           ),
                         ),

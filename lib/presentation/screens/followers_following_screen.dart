@@ -1,6 +1,5 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/follow_providers.dart';
 
@@ -57,8 +56,8 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildFollowersTab(context, mediaQuery, currentUser?.id),
-          _buildFollowingTab(context, mediaQuery, currentUser?.id),
+          _buildFollowersTab(context, mediaQuery, currentUser?.uid),
+          _buildFollowingTab(context, mediaQuery, currentUser?.uid),
         ],
       ),
     );
@@ -191,11 +190,10 @@ class _FollowersFollowingScreenState extends ConsumerState<FollowersFollowingScr
               await repository.followUser(currentUserId, targetUserId);
             }
           } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error: ${e.toString()}')),
-              );
-            }
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error: ${e.toString()}')),
+            );
           }
         },
         child: Text(isFollowing ? 'Following' : 'Follow'),

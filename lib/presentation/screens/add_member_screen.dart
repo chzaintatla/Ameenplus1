@@ -21,7 +21,7 @@ final publicProfileUsersProvider = StreamProvider<List<Map<String, dynamic>>>((r
         final userId = item['id'] as String;
         final isPublic = item['is_profile_public'] as bool? ?? false;
         
-        if (!isPublic || (currentUser != null && userId == currentUser.id)) {
+        if (!isPublic || (currentUser != null && userId == currentUser.uid)) {
           continue;
         }
         
@@ -211,7 +211,7 @@ class AddMemberScreen extends ConsumerWidget {
                         ? const SizedBox.shrink()
                         : StreamBuilder<bool>(
                             stream: followRepo.watchIsFollowing(
-                              currentUser.id,
+                              currentUser.uid,
                               userId,
                             ),
                             builder: (context, snapshot) {
@@ -222,7 +222,7 @@ class AddMemberScreen extends ConsumerWidget {
                                   onPressed: () async {
                                     try {
                                       await followRepo.unfollowUser(
-                                        currentUser.id,
+                                        currentUser.uid,
                                         userId,
                                       );
                                       if (context.mounted) {
@@ -256,7 +256,7 @@ class AddMemberScreen extends ConsumerWidget {
                                 onPressed: () async {
                                   try {
                                     await followRepo.followUser(
-                                      currentUser.id,
+                                      currentUser.uid,
                                       userId,
                                     );
                                     if (context.mounted) {

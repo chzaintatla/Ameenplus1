@@ -5,9 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/community_providers.dart';
 import '../../providers/chat_providers.dart';
-import '../../utils/app_constants.dart';
 import '../../models/community_model.dart';
-import 'community_detail_screen.dart';
 
 class CommunitiesPage extends ConsumerStatefulWidget {
   const CommunitiesPage({super.key});
@@ -133,7 +131,7 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: selectedCategory,
+                initialValue: selectedCategory,
                 decoration: const InputDecoration(labelText: 'Category'),
                 items: const [
                   DropdownMenuItem(value: 'General', child: Text('General')),
@@ -176,9 +174,9 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
                   id: const Uuid().v4(),
                   name: nameController.text.trim(),
                   description: descController.text.trim(),
-                  createdBy: user.id,
-                  members: [user.id],
-                  admins: [user.id],
+                  createdBy: user.uid,
+                  members: [user.uid],
+                  admins: [user.uid],
                   category: selectedCategory,
                   isPublic: true,
                   createdAt: DateTime.now(),
@@ -227,7 +225,7 @@ class _CommunitiesPageState extends ConsumerState<CommunitiesPage> with SingleTi
 
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
-      final chatId = await chatRepo.getOrCreateCommunityChat(communityId);
+      final chatId = await chatRepo.getOrCreateCommunityChat(communityId, user.uid);
       if (context.mounted) {
         context.push('/chat/$chatId', extra: {
           'isCommunityChat': true,
@@ -313,7 +311,7 @@ class _MyCommunitiesTab extends ConsumerWidget {
             itemCount: communities.length,
             itemBuilder: (context, index) {
               final community = communities[index];
-              final isOwner = currentUser?.id == community.creatorId;
+              final isOwner = currentUser?.uid == community.creatorId;
               
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -446,7 +444,7 @@ class _ExploreCommunitiesTab extends ConsumerWidget {
             itemCount: communities.length,
             itemBuilder: (context, index) {
               final community = communities[index];
-              final isMember = currentUser != null && community.members.contains(currentUser.id);
+              final isMember = currentUser != null && community.members.contains(currentUser.uid);
               
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -486,7 +484,7 @@ class _ExploreCommunitiesTab extends ConsumerWidget {
 
                             try {
                               final repository = ref.read(communityRepositoryProvider);
-                              await repository.joinCommunity(community.id, currentUser.id);
+                              await repository.joinCommunity(community.id, currentUser.uid);
                               if (context.mounted) {
                                 ref.invalidate(userCommunitiesProvider);
                                 ref.invalidate(communitiesProvider);

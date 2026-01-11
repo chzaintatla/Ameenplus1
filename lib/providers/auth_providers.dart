@@ -1,24 +1,11 @@
-﻿import 'package:supabase_flutter/supabase_flutter.dart';
+﻿import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
-import '../supabase/supabase_ready_provider.dart';
 import '../network/repositories/auth_repository.dart';
 
 final authStateProvider = StreamProvider<User?>((ref) {
-  final readyAsync = ref.watch(supabaseReadyProvider);
-
-  return readyAsync.maybeWhen(
-    data: (ready) => ready ? Supabase.instance.client.auth.onAuthStateChange.map((event) => event.session?.user) : const Stream<User?>.empty(),
-    orElse: () => const Stream<User?>.empty(),
-  );
-});
-
-final supabaseAuthProvider = Provider<SupabaseClient?>((ref) {
-  final readyAsync = ref.watch(supabaseReadyProvider);
-  return readyAsync.maybeWhen(
-    data: (ready) => ready ? Supabase.instance.client : null,
-    orElse: () => null,
-  );
+  return FirebaseAuth.instance.authStateChanges();
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -27,7 +14,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 final currentUserProvider = StreamProvider<User?>((ref) {
   final repository = ref.watch(authRepositoryProvider);
-  return repository.authStateChanges.map((event) => event.session?.user);
+  return repository.authStateChanges;
 });
 
 final currentUserModelProvider = StreamProvider<UserModel?>((ref) {
@@ -40,7 +27,7 @@ final currentUserModelProvider = StreamProvider<UserModel?>((ref) {
       return Supabase.instance.client
           .from('users')
           .stream(primaryKey: ['id'])
-          .eq('id', user.id)
+          .eq('id', user.uid)
           .map((data) {
             if (data.isEmpty) return null;
             return UserModel.fromMap(data.first);

@@ -164,7 +164,7 @@ class HabitsRepository {
         updatedHabit = habit.markCompleted(value: value);
       }
 
-      await _localDb.updateHabit(habitId, updatedHabit!.toLocal());
+      await _localDb.updateHabit(habitId, updatedHabit.toLocal());
 
       if (updatedHabit.habitType == AppConstants.habitCustom) {
         await _xpService.awardXP(
@@ -264,7 +264,7 @@ class HabitsRepository {
       }
 
       if (updatedHabit != null) {
-        await _localDb.updateHabit(habitId, updatedHabit!.toLocal());
+        await _localDb.updateHabit(habitId, updatedHabit.toLocal());
       }
 
       return updatedHabit;

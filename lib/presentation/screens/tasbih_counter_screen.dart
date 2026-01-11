@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import '../../providers/auth_providers.dart';
 import '../../utils/points_service.dart';
-import '../../utils/app_constants.dart';
 
 class TasbihCounterScreen extends ConsumerStatefulWidget {
   const TasbihCounterScreen({super.key});
@@ -73,7 +72,7 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
       final user = ref.read(authStateProvider).value;
       if (user != null) {
         final pointsService = PointsService();
-        await pointsService.addTasbihPoints(user.id, 100);
+        await pointsService.addTasbihPoints(user.uid, 100);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

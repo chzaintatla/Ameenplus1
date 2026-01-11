@@ -8,7 +8,8 @@ import 'presentation/screens/feed_page.dart';
 import 'presentation/screens/habits_page.dart';
 import 'presentation/screens/habits_list_page.dart';
 import 'presentation/screens/tasbih_counter_screen.dart';
-import 'presentation/screens/leaderboard_page.dart';
+import 'presentation/screens/leaderboard_screen.dart';
+import 'presentation/screens/habits_history_screen.dart';
 import 'presentation/screens/mood_page.dart';
 import 'presentation/screens/profile_page.dart';
 import 'presentation/screens/edit_profile_screen.dart';
@@ -139,7 +140,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/leaderboard',
         name: 'leaderboard',
-        builder: (context, state) => const LeaderboardPage(),
+        builder: (context, state) => const LeaderboardScreen(),
+      ),
+      GoRoute(
+        path: '/habits-history',
+        name: 'habits-history',
+        builder: (context, state) => const HabitsHistoryScreen(),
       ),
       // GoRoute(
       //   path: '/admin',

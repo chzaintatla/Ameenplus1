@@ -99,7 +99,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 final user = authState.value;
                 if (user != null) {
                   await ref.read(userProfileRepositoryProvider).setProfilePublic(
-                        uid: user.id,
+                        uid: user.uid,
                         isPublic: value,
                       );
                   if (mounted && context.mounted) {
@@ -215,7 +215,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   data: (user) {
                     final isSignedIn = user != null;
                     final profile = profileState.profile ?? profileAsync.valueOrNull;
-                    final userId = user?.id;
+                    final userId = user?.uid;
 
                     return Column(
                       children: [
@@ -227,10 +227,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 backgroundColor: scheme.primary.withValues(alpha: 0.15),
                                 backgroundImage: profile?.photoUrl != null
                                     ? NetworkImage(profile!.photoUrl!)
-                                    : (user?.userMetadata?['avatar_url'] != null
-                                        ? NetworkImage(user!.userMetadata!['avatar_url'] as String)
+                                    : (user?.photoURL != null
+                                        ? NetworkImage(user!.photoURL!)
                                         : null),
-                                child: profile?.photoUrl == null && user?.userMetadata?['avatar_url'] == null
+                                child: profile?.photoUrl == null && user?.photoURL == null
                                     ? Icon(Icons.person_rounded,
                                         color: scheme.primary,
                                         size: mediaQuery.size.width * 0.15)
@@ -257,7 +257,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         SizedBox(height: mediaQuery.size.height * 0.02),
                         Text(
                           profile?.displayName ??
-                              user?.userMetadata?['display_name'] as String? ??
+                              user?.displayName ??
                               'User',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
@@ -292,7 +292,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           if (_isExpanded) ...[
                             SizedBox(height: mediaQuery.size.height * 0.01),
                             if (profile?.email != null && profile!.email!.isNotEmpty) ...[
-                              if (isSignedIn && (userId == user?.id || profile.isEmailPublic)) ...[
+                              if (isSignedIn && (userId == user.uid || profile.isEmailPublic)) ...[
                                 _buildInfoRow(
                                   context,
                                   Icons.email_outlined,
@@ -304,7 +304,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               ],
                             ],
                             if (profile?.phoneNumber != null && profile!.phoneNumber!.isNotEmpty) ...[
-                              if (isSignedIn && (userId == user?.id || profile.isPhonePublic)) ...[
+                              if (isSignedIn && (userId == user.uid || profile.isPhonePublic)) ...[
                                 _buildInfoRow(
                                   context,
                                   Icons.phone_outlined,
@@ -462,7 +462,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             return SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
-                child: _buildPostsSection(context, user.id, mediaQuery),
+                child: _buildPostsSection(context, user.uid, mediaQuery),
               ),
             );
           },

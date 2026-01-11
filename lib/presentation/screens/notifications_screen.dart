@@ -1,6 +1,5 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../providers/auth_providers.dart';
 import '../../providers/notification_providers.dart';
@@ -27,7 +26,7 @@ class NotificationsScreen extends ConsumerWidget {
                 onPressed: () async {
                   final user = currentUser.value;
                   if (user != null) {
-                    await ref.read(notificationRepositoryProvider).markAllAsRead(user.id);
+                    await ref.read(notificationRepositoryProvider).markAllAsRead(user.uid);
                   }
                 },
                 icon: const Icon(Icons.done_all, size: 18),

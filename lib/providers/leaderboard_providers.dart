@@ -1,6 +1,7 @@
 ﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../supabase/supabase_ready_provider.dart';
 import '../network/repositories/leaderboard_repository.dart';
+import '../models/leaderboard_user.dart';
 
 final leaderboardRepositoryProvider = Provider<LeaderboardRepository>((ref) {
   final readyAsync = ref.watch(supabaseReadyProvider);
@@ -11,7 +12,7 @@ final leaderboardRepositoryProvider = Provider<LeaderboardRepository>((ref) {
   );
 });
 
-final globalLeaderboardProvider = FutureProvider<List<dynamic>>((ref) async {
+final globalLeaderboardProvider = FutureProvider<List<LeaderboardUser>>((ref) async {
   final repository = ref.watch(leaderboardRepositoryProvider);
   return await repository.getGlobalLeaderboard(limit: 50);
 });

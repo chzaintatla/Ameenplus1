@@ -1,9 +1,7 @@
-﻿import 'dart:io';
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:camera/camera.dart';
-import '../../services/ai_validation_service.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -264,7 +262,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final mediaPath = _capturedImage?.path ?? _capturedVideo?.path;
     final mediaType = _capturedImage != null ? 'image' : 'video';
     
-    final validationMessage = 'Please validate this ${mediaType} content.';
+    final validationMessage = 'Please validate this $mediaType content.';
     
     context.push('/ai-chatbot', extra: {
       'initialMessage': validationMessage,

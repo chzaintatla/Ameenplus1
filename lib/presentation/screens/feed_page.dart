@@ -84,7 +84,7 @@ class FeedPage extends ConsumerWidget {
                       ),
                       child: DeedCard(
                         deed: deed,
-                        currentUserId: currentUser.value?.id,
+                        currentUserId: currentUser.value?.uid,
                         onTap: () {},
                         onComment: () {},
                       ),
@@ -164,10 +164,10 @@ class _CreatePostCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: mediaQuery.size.width * 0.06,
-                backgroundImage: currentUser?.userMetadata?['avatar_url'] != null
-                    ? NetworkImage(currentUser!.userMetadata!['avatar_url'] as String)
+                backgroundImage: currentUser?.photoURL != null
+                    ? NetworkImage(currentUser!.photoURL!)
                     : null,
-                child: currentUser?.userMetadata?['avatar_url'] == null
+                child: currentUser?.photoURL == null
                     ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
                     : null,
               ),

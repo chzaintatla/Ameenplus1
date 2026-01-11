@@ -1,8 +1,9 @@
-﻿import 'package:supabase_flutter/supabase_flutter.dart';
+﻿import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../supabase/supabase_ready_provider.dart';
 import '../../models/user_profile.dart';
+import '../../supabase/supabase_ready_provider.dart';
 
 abstract class UserProfileRepository {
   Stream<UserProfile?> watchProfile(String uid);
@@ -58,20 +59,18 @@ class SupabaseUserProfileRepository implements UserProfileRepository {
     final existing = await _supabase
         .from('users')
         .select()
-        .eq('id', user.id)
+        .eq('id', user.uid)
         .maybeSingle();
 
     final next = <String, Object?>{
-      'id': user.id,
-      'display_name': user.userMetadata?['display_name'] ?? 
-                     user.userMetadata?['full_name'] ?? 
-                     'User',
-      'photo_url': user.userMetadata?['avatar_url'],
+      'id': user.uid,
+      'display_name': user.displayName ?? 'User',
+      'photo_url': user.photoURL,
       'points': 0,
       'is_profile_public': true,
       'interests': <String>[],
       'email': user.email,
-      'phone_number': user.phone,
+      'phone_number': user.phoneNumber,
       'updated_at': DateTime.now().toIso8601String(),
       'created_at': DateTime.now().toIso8601String(),
     };
@@ -84,9 +83,9 @@ class SupabaseUserProfileRepository implements UserProfileRepository {
           .update({
             'display_name': next['display_name'],
             'photo_url': next['photo_url'],
-            'updated_at': next['updated_at'],
+            'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', user.id);
+          .eq('id', user.uid);
     }
   }
 

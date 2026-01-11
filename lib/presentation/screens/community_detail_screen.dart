@@ -4,9 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/community_providers.dart';
 import '../../providers/chat_providers.dart';
-import '../../network/repositories/friends_repository.dart';
 import '../../models/community_model.dart';
-import 'add_member_screen.dart';
 
 final communityProvider = FutureProvider.family<CommunityModel?, String>((ref, communityId) async {
   final repository = ref.read(communityRepositoryProvider);
@@ -19,7 +17,7 @@ final isCommunityMemberProvider = FutureProvider.family<bool, String>((ref, comm
   if (user == null) return false;
 
   final repository = ref.read(communityRepositoryProvider);
-  return await repository.isMember(communityId, user.id);
+  return await repository.isMember(communityId, user.uid);
 });
 
 class CommunityDetailScreen extends ConsumerWidget {
@@ -131,7 +129,7 @@ class CommunityDetailScreen extends ConsumerWidget {
                                     );
                                   }
 
-                                  final chatId = await chatRepo.getOrCreateCommunityChat(communityId);
+                                  final chatId = await chatRepo.getOrCreateCommunityChat(communityId, user.uid);
                                   if (context.mounted) {
                                     ref.invalidate(isCommunityMemberProvider(communityId));
                                     context.push('/chat/$chatId', extra: {
@@ -164,7 +162,7 @@ class CommunityDetailScreen extends ConsumerWidget {
                               if (user != null) {
                                 await ref.read(communityRepositoryProvider).leaveCommunity(
                                   communityId,
-                                  user.id,
+                                  user.uid,
                                 );
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -188,7 +186,7 @@ class CommunityDetailScreen extends ConsumerWidget {
                           if (user != null) {
                             await ref.read(communityRepositoryProvider).joinCommunity(
                               communityId,
-                              user.id,
+                              user.uid,
                             );
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

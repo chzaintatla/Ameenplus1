@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/storage_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/chat_providers.dart';
@@ -69,9 +69,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       await ref.read(chatRepositoryProvider).sendMessage(
         chatId: widget.chatId,
-        senderId: currentUser.id,
-        senderName: currentUser.userMetadata?['display_name'] ?? 'User',
-        senderPhotoUrl: currentUser.userMetadata?['avatar_url'],
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName ?? 'User',
+        senderPhotoUrl: currentUser.photoURL,
         content: content.isEmpty ? (messageType == 'image' ? 'ðŸ“· Image' : messageType == 'video' ? 'ðŸŽ¥ Video' : 'ðŸ“„ Document') : content,
         type: messageType ?? 'text',
         mediaUrl: mediaUrl,
@@ -155,15 +155,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     try {
-      final supabase = Supabase.instance.client;
       final fileExtension = fileName?.split('.').last ?? file.path.split('.').last;
       final filePath = 'chat_media/${widget.chatId}/${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
-      await supabase.storage
-          .from('media')
-          .upload(filePath, file, fileOptions: FileOptions(upsert: true));
-
-      final downloadUrl = supabase.storage.from('media').getPublicUrl(filePath);
+      final downloadUrl = await StorageService.uploadFile(
+        bucket: 'media',
+        filePath: filePath,
+        file: file,
+        upsert: true,
+      );
 
       await _sendMessage(
         mediaUrl: downloadUrl,
@@ -246,7 +246,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (user != null) {
         ref.read(chatRepositoryProvider).markMessagesAsRead(
           widget.chatId, 
-          user.id,
+          user.uid,
           isCommunityChat: widget.isCommunityChat,
         );
       }
@@ -324,7 +324,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final message = messages[index];
-                    final isMe = message.senderId == currentUser.value?.id;
+                    final isMe = message.senderId == currentUser.value?.uid;
 
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

@@ -251,14 +251,17 @@ class AppDatabase {
       try {
         await db.execute('ALTER TABLE habits ADD COLUMN durationDays INTEGER');
       } catch (e) {
+        // Column may already exist, ignore
       }
       try {
         await db.execute('ALTER TABLE habits ADD COLUMN endDate TEXT');
       } catch (e) {
+        // Column may already exist, ignore
       }
       try {
         await db.execute('ALTER TABLE habits ADD COLUMN autoRemoveAfterCompletion INTEGER DEFAULT 0');
       } catch (e) {
+        // Column may already exist, ignore
       }
     }
   }

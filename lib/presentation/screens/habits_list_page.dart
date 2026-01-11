@@ -1,13 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/auth_providers.dart';
 import '../../utils/app_constants.dart';
-import '../../network/repositories/habits_repository.dart';
 import '../../models/habit_model.dart';
 import '../../providers/habits_providers.dart';
 import '../../utils/points_service.dart';
-import 'tasbih_counter_screen.dart';
 
 class HabitsListPage extends ConsumerStatefulWidget {
   const HabitsListPage({super.key});
@@ -26,6 +25,15 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Habits'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              context.push('/habits-history');
+            },
+            tooltip: 'View History',
+          ),
+        ],
       ),
       body: _buildHabitsTab(habitsAsync, currentUser),
     );
@@ -57,7 +65,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
               if (currentUser != null)
                 TextButton.icon(
                   onPressed: () {
-                    _showAddHabitDialog(context, ref, currentUser.id);
+                    _showAddHabitDialog(context, ref, currentUser.uid);
                   },
                   icon: const Icon(Icons.add),
                   label: const Text('Add Habit'),
@@ -65,7 +73,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
             ],
           ),
           const SizedBox(height: 12),
-          if (currentUser != null) _buildNamazTracker(context, currentUser.id),
+          if (currentUser != null) _buildNamazTracker(context, currentUser.uid),
           const SizedBox(height: 12),
           habitsAsync.when(
             data: (habits) {
@@ -97,7 +105,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           onPressed: () {
-                            _showAddHabitDialog(context, ref, currentUser!.id);
+                            _showAddHabitDialog(context, ref, currentUser!.uid);
                           },
                           icon: const Icon(Icons.add),
                           label: const Text('Add Your First Habit'),
@@ -155,30 +163,28 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                           try {
                             await ref.read(habitsRepositoryProvider).deleteHabit(
                               habit.id,
-                              currentUser.id,
+                              currentUser.uid,
                             );
                             ref.invalidate(userHabitsProvider);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('${habit.habitName} deleted'),
-                                  backgroundColor: Theme.of(context).colorScheme.error,
-                                ),
-                              );
-                            }
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${habit.habitName} deleted'),
+                                backgroundColor: Theme.of(context).colorScheme.error,
+                              ),
+                            );
                           } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error deleting habit: $e'),
-                                  backgroundColor: Theme.of(context).colorScheme.error,
-                                ),
-                              );
-                            }
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error deleting habit: $e'),
+                                backgroundColor: Theme.of(context).colorScheme.error,
+                              ),
+                            );
                           }
                         }
                       },
-                      child: _buildHabitCard(context, ref, habit, currentUser?.id),
+                      child: _buildHabitCard(context, ref, habit, currentUser?.uid),
                     ),
                   );
                 }).toList(),
@@ -930,7 +936,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                           ),
                           const SizedBox(height: 16),
                           DropdownButtonFormField<String>(
-                            value: selectedType,
+                            initialValue: selectedType,
                             decoration: InputDecoration(
                               labelText: 'Habit Type',
                               border: OutlineInputBorder(
@@ -1049,7 +1055,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                           ),
                           const SizedBox(height: 16),
                           DropdownButtonFormField<int?>(
-                            value: durationDays,
+                            initialValue: durationDays,
                             decoration: InputDecoration(
                               labelText: 'Duration (Optional)',
                               hintText: 'No limit',

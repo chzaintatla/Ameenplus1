@@ -16,6 +16,6 @@ final userHabitsProvider = StreamProvider<List<HabitModel>>((ref) {
     return Stream.value([]);
   }
   
-  return repository.getUserHabits(currentUser.value!.id);
+  return repository.getUserHabits(currentUser.value!.uid);
 });
 

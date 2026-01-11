@@ -17,7 +17,7 @@ final notificationsProvider = StreamProvider.autoDispose<List<NotificationModel>
   }
   
   final repository = ref.read(notificationRepositoryProvider);
-  return repository.getUserNotifications(user.id);
+  return repository.getUserNotifications(user.uid);
 });
 
 final unreadCountProvider = StreamProvider.autoDispose<int>((ref) {
@@ -29,5 +29,5 @@ final unreadCountProvider = StreamProvider.autoDispose<int>((ref) {
   }
   
   final repository = ref.read(notificationRepositoryProvider);
-  return repository.watchUnreadCount(user.id);
+  return repository.watchUnreadCount(user.uid);
 });

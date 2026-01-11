@@ -7,9 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/deeds_providers.dart';
 import '../../providers/interests_providers.dart';
-import '../../providers/moderation_providers.dart';
 import '../../utils/app_constants.dart';
-import '../../services/ai_validation_service.dart';
 import '../../services/moderation_service.dart';
 import '../../services/interests_service.dart';
 
@@ -30,7 +28,6 @@ class CreateDeedScreen extends ConsumerStatefulWidget {
 class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
   final _contentController = TextEditingController();
   final _imagePicker = ImagePicker();
-  final AIContentValidationService _validationService = AIContentValidationService();
   final ModerationService _moderationService = ModerationService();
   final InterestsService _interestsService = InterestsService();
   
@@ -104,8 +101,33 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
       if (result == null) return;
 
       if (result == 'image') {
+        // Show source selection (Camera or Gallery)
+        final source = await showModalBottomSheet<ImageSource>(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.camera_alt),
+                  title: const Text('Camera'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('Gallery'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+
+        if (source == null) return;
+
         final image = await _imagePicker.pickImage(
-          source: ImageSource.gallery,
+          source: source,
           maxWidth: 1920,
           maxHeight: 1920,
           imageQuality: 85,
@@ -131,7 +153,33 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
           }
         }
       } else if (result == 'video') {
-        final video = await _imagePicker.pickVideo(source: ImageSource.gallery);
+        if (!mounted) return;
+        // Show source selection (Camera or Gallery)
+        final source = await showModalBottomSheet<ImageSource>(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.videocam),
+                  title: const Text('Camera'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.video_library),
+                  title: const Text('Gallery'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+
+        if (source == null) return;
+
+        final video = await _imagePicker.pickVideo(source: source);
         if (video != null) {
           final file = File(video.path);
           if (await file.exists()) {
@@ -258,9 +306,9 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
       }
 
       // Check moderation status
-      final canPost = await _moderationService.canUserPost(user.id);
+      final canPost = await _moderationService.canUserPost(user.uid);
       if (!canPost) {
-        final status = await _moderationService.getModerationStatus(user.id);
+        final status = await _moderationService.getModerationStatus(user.uid);
         if (mounted) {
           setState(() {
             _isValidating = false;
@@ -285,64 +333,9 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
         return;
       }
 
-      final mediaPath = _selectedImage?.path ?? 
-                       _selectedVideo?.path ?? 
-                       _selectedFile?.path;
-      final mediaType = _selectedMediaType;
       
-      final validationResult = await _validationService.validatePost(
-        text: _contentController.text.trim().isEmpty ? null : _contentController.text.trim(),
-        mediaPath: mediaPath,
-        mediaType: mediaType,
-      );
-
-      if (!validationResult.isValid) {
-        // Add negative point
-        final moderationResult = await _moderationService.addNegativePoint(
-          userId: user.id,
-          reason: validationResult.reason,
-        );
-
-        if (mounted) {
-          setState(() {
-            _isValidating = false;
-            _isLoading = false;
-          });
-          
-          // Show moderation warning if applicable
-          if (moderationResult.showWarning) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(moderationResult.message),
-                backgroundColor: moderationResult.isFinalWarning 
-                    ? Colors.red 
-                    : Colors.orange,
-                duration: const Duration(seconds: 5),
-              ),
-            );
-          }
-
-          if (moderationResult.isBlocked) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(moderationResult.message),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 10),
-              ),
-            );
-            return;
-          }
-          
-          final chatbotMessage = 'I tried to post content but it was flagged as non-Islamic. '
-              'Can you help me understand why? Here\'s what I tried to post: '
-              '${_contentController.text.trim().isEmpty ? "Media content" : _contentController.text.trim()}. '
-              'The validation said: ${validationResult.reason}';
-          
-          context.push('/ai-chatbot', extra: {'initialMessage': chatbotMessage});
-        }
-        return;
-      }
-
+      // Note: Validation is now done on the backend
+      // Posts are saved with isValidated: false and backend will validate
       setState(() => _isValidating = false);
 
       // Increment interest counts
@@ -352,9 +345,9 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
 
       final repository = ref.read(deedsRepositoryProvider);
       await repository.createDeed(
-        userId: user.id,
-        userName: user.userMetadata?['display_name'] as String? ?? 'User',
-        userPhotoUrl: user.userMetadata?['avatar_url'] as String?,
+        userId: user.uid,
+        userName: user.displayName ?? 'User',
+        userPhotoUrl: user.photoURL,
         deedType: AppConstants.deedGeneral,
         content: _contentController.text.trim().isEmpty 
             ? (_selectedMediaType == 'image' ? 'ðŸ“· Image' 
@@ -372,16 +365,16 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
         filePath: _selectedFile?.path,
         mediaType: _selectedMediaType,
         interests: _selectedInterests,
-        isValidated: true,
-        validationReason: validationResult.reason,
-        validationConfidence: validationResult.confidence,
+        isValidated: false, // Backend will validate and set to true
+        validationReason: null,
+        validationConfidence: null,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Post created! +${AppConstants.xpPerDeedPost} points'),
-            backgroundColor: Colors.green,
+            content: const Text('Post submitted! It will be reviewed and appear after validation.'),
+            backgroundColor: Colors.blue,
           ),
         );
         context.pop();
@@ -394,7 +387,7 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
             content: Text(
               errorMessage.contains('Exception:') 
                 ? errorMessage.split('Exception:').last.trim()
-                : 'Error: ${errorMessage}'
+                : 'Error: $errorMessage'
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 4),
@@ -472,16 +465,16 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
               children: [
                 CircleAvatar(
                   radius: mediaQuery.size.width * 0.06,
-                  backgroundImage: user?.userMetadata?['avatar_url'] != null
-                      ? NetworkImage(user!.userMetadata!['avatar_url'] as String)
+                  backgroundImage: user?.photoURL != null
+                      ? NetworkImage(user!.photoURL!)
                       : null,
-                  child: user?.userMetadata?['avatar_url'] == null
+                  child: user?.photoURL == null
                       ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
                       : null,
                 ),
                 SizedBox(width: mediaQuery.size.width * 0.03),
                 Text(
-                  user?.userMetadata?['display_name'] as String? ?? 'User',
+                  user?.displayName ?? 'User',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),

@@ -53,36 +53,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
-  Future<void> _signInWithFacebook() async {
-    try {
-      final repository = ref.read(authRepositoryProvider);
-      await repository.signInWithFacebook();
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        final authState = ref.read(authStateProvider);
-        authState.whenData((user) {
-          if (user != null && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Signed in successfully!'),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-              ),
-            );
-            context.go('/feed');
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString().replaceFirst('Exception: ', '')}'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
-    }
-  }
 
   void _continueAsGuest() {
     ref.read(guestModeProvider.notifier).state = true;
@@ -176,15 +146,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 onPressed: _signInWithGoogle,
                 icon: const Icon(Icons.g_mobiledata, size: 28),
                 label: const Text('Continue with Google'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _signInWithFacebook,
-                icon: const Icon(Icons.facebook, size: 28),
-                label: const Text('Continue with Facebook'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),

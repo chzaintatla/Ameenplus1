@@ -4,7 +4,6 @@ import '../../providers/auth_providers.dart';
 import '../../providers/profile_providers.dart';
 import '../../services/daily_deeds_service.dart';
 import '../../models/daily_deed.dart';
-import '../../utils/app_constants.dart';
 
 class DailyDeedScreen extends ConsumerStatefulWidget {
   const DailyDeedScreen({super.key});

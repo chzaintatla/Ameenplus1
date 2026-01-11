@@ -18,7 +18,7 @@ final userCommunitiesProvider = StreamProvider<List<CommunityModel>>((ref) {
   if (user == null) return Stream.value([]);
   
   final repository = ref.read(communityRepositoryProvider);
-  return repository.getUserCommunities(user.id);
+  return repository.getUserCommunities(user.uid);
 });
 
 final communityProvider = FutureProvider.family<CommunityModel?, String>((ref, communityId) async {
@@ -32,5 +32,5 @@ final isCommunityMemberProvider = FutureProvider.family<bool, String>((ref, comm
   if (user == null) return false;
 
   final repository = ref.read(communityRepositoryProvider);
-  return await repository.isMember(communityId, user.id);
+  return await repository.isMember(communityId, user.uid);
 });

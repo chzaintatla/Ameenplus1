@@ -40,11 +40,8 @@ class ChatRepository {
   }
 
   /// Get or create a community chat
-  Future<String> getOrCreateCommunityChat(String communityId) async {
-    final currentUser = _supabase.auth.currentUser;
-    if (currentUser == null) {
-      throw Exception('User must be authenticated to access community chat');
-    }
+  /// [userId] - Firebase Auth user ID
+  Future<String> getOrCreateCommunityChat(String communityId, String userId) async {
 
     // Get community document
     final communityDoc = await _supabase
@@ -60,9 +57,9 @@ class ChatRepository {
     // Ensure user is a member of the community
     final members = List<String>.from(communityDoc['members'] ?? []);
     
-    if (!members.contains(currentUser.id)) {
+    if (!members.contains(userId)) {
       // Add user to community members
-      members.add(currentUser.id);
+      members.add(userId);
       await _supabase
           .from(AppConstants.collectionCommunities)
           .update({

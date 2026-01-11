@@ -1,7 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'leaderboard_page.dart';
 
 class HabitsPage extends ConsumerWidget {
   const HabitsPage({super.key});
@@ -22,9 +21,6 @@ class HabitsPage extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const SizedBox(height: 8),
-          // Leaderboard Section
-          const LeaderboardPage(),
-          const SizedBox(height: 16),
           // Islamic Habits Tracker
           _buildToolCard(
             context,

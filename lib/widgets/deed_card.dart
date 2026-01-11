@@ -11,12 +11,10 @@ import 'package:http/http.dart' as http;
 import '../theme/ameen_theme.dart';
 import '../utils/app_constants.dart';
 import '../models/deed_model.dart';
-import '../network/repositories/deeds_repository.dart';
 import '../providers/follow_providers.dart';
 import '../providers/auth_providers.dart';
 import '../providers/comments_providers.dart';
 import '../providers/deeds_providers.dart';
-import '../network/repositories/comments_repository.dart';
 import '../models/comment_model.dart';
 
 class DeedCard extends ConsumerWidget {
@@ -155,8 +153,7 @@ class DeedCard extends ConsumerWidget {
                         }
                       },
                       child: Text(isFollowing ? 'Following' : 'Follow'),
-                    ) ??
-                    const SizedBox.shrink(),
+                    ),
                     loading: () => SizedBox(
                       width: mediaQuery.size.width * 0.05,
                       height: mediaQuery.size.width * 0.05,
@@ -632,7 +629,7 @@ class DeedCard extends ConsumerWidget {
                     itemBuilder: (context, index) {
                       final comment = comments[index];
                       final isCommentLiked = currentUser != null &&
-                          comment.isLikedBy(currentUser.id);
+                          comment.isLikedBy(currentUser.uid);
 
                       return Padding(
                         padding: EdgeInsets.only(bottom: mediaQuery.size.height * 0.015),
@@ -701,7 +698,7 @@ class DeedCard extends ConsumerWidget {
                                                 ref.read(commentsRepositoryProvider);
                                             await repository.likeComment(
                                               comment.id,
-                                              currentUser.id,
+                                              currentUser.uid,
                                             );
                                           }
                                         },
@@ -785,9 +782,9 @@ class DeedCard extends ConsumerWidget {
                         final repository = ref.read(commentsRepositoryProvider);
                         await repository.addComment(
                           deedId: deedId,
-                          userId: currentUser.id,
-                          userName: currentUser.userMetadata?['display_name'] ?? 'User',
-                          userPhotoUrl: currentUser.userMetadata?['avatar_url'],
+                          userId: currentUser.uid,
+                          userName: currentUser.displayName ?? 'User',
+                          userPhotoUrl: currentUser.photoURL,
                           content: commentController.text.trim(),
                         );
                         commentController.clear();

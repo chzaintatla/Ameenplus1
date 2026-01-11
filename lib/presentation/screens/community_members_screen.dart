@@ -93,7 +93,7 @@ class CommunityMembersScreen extends ConsumerWidget {
             itemCount: members.length,
             itemBuilder: (context, index) {
               final member = members[index];
-              final isCurrentUser = member['id'] == currentUser.value?.id;
+              final isCurrentUser = member['id'] == currentUser.value?.uid;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -130,7 +130,7 @@ class CommunityMembersScreen extends ConsumerWidget {
                         )
                       : FutureBuilder<bool>(
                           future: _checkIfFriends(
-                            currentUser.value?.id ?? '',
+                            currentUser.value?.uid ?? '',
                             member['id'] as String,
                           ),
                           builder: (context, snapshot) {
@@ -150,7 +150,7 @@ class CommunityMembersScreen extends ConsumerWidget {
                                 if (user != null) {
                                   try {
                                     await friendsRepo.sendFriendRequest(
-                                      user.id,
+                                      user.uid,
                                       member['id'] as String,
                                     );
                                     if (context.mounted) {

@@ -1,5 +1,4 @@
-﻿import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../network/repositories/user_profile_repository.dart';
 import '../models/user_profile.dart'; // Using UserProfile which contains more details
 import 'auth_providers.dart';
@@ -18,5 +17,5 @@ final currentUserProfileProvider = StreamProvider<UserProfile?>((ref) {
   if (user == null) return Stream.value(null);
   
   final repository = ref.watch(userProfileRepositoryProvider);
-  return repository.watchProfile(user.id);
+  return repository.watchProfile(user.uid);
 });
