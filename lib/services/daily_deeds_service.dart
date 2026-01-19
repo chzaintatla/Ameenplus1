@@ -41,9 +41,6 @@ class DailyDeedsService {
   }
 
   Future<DailyDeed?> getTodaysDeed(UserProfile profile) async {
-    // In a real app, this would use AI (like Groq) to generate a deed
-    // or fetch from a curated database based on user interests.
-    
     final interest = profile.interests.isNotEmpty 
         ? profile.interests.first 
         : 'Kindness';

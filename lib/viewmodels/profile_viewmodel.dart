@@ -1,40 +1,46 @@
 ﻿import 'dart:io';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import '../network/repositories/auth_repository.dart';
-import '../providers/auth_providers.dart';
 import '../network/repositories/user_profile_repository.dart';
 import '../models/user_profile.dart';
 import '../services/storage_service.dart';
 
-class ProfileViewModel extends StateNotifier<ProfileState> {
+class ProfileViewModel extends ChangeNotifier {
   ProfileViewModel({
     required this.authRepository,
     required this.profileRepository,
-  }) : super(ProfileState.initial());
+  });
 
   final AuthRepository authRepository;
   final UserProfileRepository profileRepository;
+  ProfileState _state = ProfileState.initial();
+  
+  ProfileState get state => _state;
 
   Future<void> loadProfile() async {
     final user = authRepository.currentUser;
     if (user == null) {
-      state = state.copyWith(error: 'No user signed in');
+      _state = _state.copyWith(error: 'No user signed in');
+      notifyListeners();
       return;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    _state = _state.copyWith(isLoading: true, error: null);
+    notifyListeners();
 
     try {
       final profile = await profileRepository.getProfile(user.uid);
-      state = state.copyWith(
+      _state = _state.copyWith(
         isLoading: false,
         profile: profile,
       );
+      notifyListeners();
     } catch (e) {
-      state = state.copyWith(
+      _state = _state.copyWith(
         isLoading: false,
         error: e.toString(),
       );
+      notifyListeners();
     }
   }
 
@@ -42,7 +48,8 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
     final user = authRepository.currentUser;
     if (user == null) return null;
 
-    state = state.copyWith(isUploadingImage: true, error: null);
+    _state = _state.copyWith(isUploadingImage: true, error: null);
+    notifyListeners();
 
     try {
       final fileName = '${user.uid}.jpg';
@@ -65,17 +72,19 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
       // Update Firebase Auth user photo URL
       await user.updatePhotoURL(downloadUrl);
 
-      state = state.copyWith(
+      _state = _state.copyWith(
         isUploadingImage: false,
-        profile: state.profile?.copyWith(photoUrl: downloadUrl),
+        profile: _state.profile?.copyWith(photoUrl: downloadUrl),
       );
+      notifyListeners();
 
       return downloadUrl;
     } catch (e) {
-      state = state.copyWith(
+      _state = _state.copyWith(
         isUploadingImage: false,
         error: e.toString(),
       );
+      notifyListeners();
       return null;
     }
   }
@@ -93,11 +102,13 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
   }) async {
     final user = authRepository.currentUser;
     if (user == null) {
-      state = state.copyWith(error: 'No user signed in');
+      _state = _state.copyWith(error: 'No user signed in');
+      notifyListeners();
       return;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    _state = _state.copyWith(isLoading: true, error: null);
+    notifyListeners();
 
     try {
       await profileRepository.updateProfile(
@@ -122,10 +133,11 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
 
       await loadProfile();
     } catch (e) {
-      state = state.copyWith(
+      _state = _state.copyWith(
         isLoading: false,
         error: e.toString(),
       );
+      notifyListeners();
     }
   }
 
@@ -140,7 +152,8 @@ class ProfileViewModel extends StateNotifier<ProfileState> {
       );
       await loadProfile();
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      _state = _state.copyWith(error: e.toString());
+      notifyListeners();
     }
   }
 }
@@ -180,9 +193,3 @@ class ProfileState {
   }
 }
 
-final profileViewModelProvider = StateNotifierProvider<ProfileViewModel, ProfileState>((ref) {
-  return ProfileViewModel(
-    authRepository: ref.read(authRepositoryProvider),
-    profileRepository: ref.read(userProfileRepositoryProvider),
-  );
-});

@@ -1,11 +1,14 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/app_database.dart';
 import '../../utils/xp_service.dart';
+import '../../utils/points_service.dart';
 import '../../services/storage_service.dart';
+import '../../services/ai_validation_service.dart';
 import 'notification_repository.dart';
 import '../../models/deed_model.dart';
 
@@ -13,10 +16,10 @@ class DeedsRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
   final AppDatabase _localDb = AppDatabase.instance;
   final XPService _xpService = XPService();
+  final PointsService _pointsService = PointsService();
   final NotificationRepository _notificationRepo = NotificationRepository();
+  final AIContentValidationService _validationService = AIContentValidationService();
 
-  /// Create a deed/post - saved with isValidated: false initially
-  /// Backend validation will update isValidated to true if content is valid
   Future<DeedModel> createDeed({
     required String userId,
     required String userName,
@@ -32,7 +35,6 @@ class DeedsRepository {
     String? filePath,
     String? mediaType,
     List<String> interests = const [],
-    // Note: isValidated should always be false when creating - backend will validate
     bool isValidated = false,
     String? validationReason,
     double? validationConfidence,
@@ -41,7 +43,6 @@ class DeedsRepository {
       String? imageUrl;
       List<String> mediaUrls = [];
 
-      // Upload image to Supabase Storage
       if (imagePath != null && !imagePath.startsWith('http')) {
         final file = File(imagePath);
         if (await file.exists()) {
@@ -61,7 +62,6 @@ class DeedsRepository {
         }
       }
 
-      // Upload video
       if (videoPath != null && !videoPath.startsWith('http')) {
         final file = File(videoPath);
         if (await file.exists()) {
@@ -81,7 +81,6 @@ class DeedsRepository {
         }
       }
 
-      // Upload other files
       if (filePath != null && !filePath.startsWith('http')) {
         final file = File(filePath);
         if (await file.exists()) {
@@ -118,7 +117,26 @@ class DeedsRepository {
       final deedId = const Uuid().v4();
       final now = DateTime.now();
 
-      final deed = DeedModel(
+      String? mediaPath;
+      if (imagePath != null && !imagePath.startsWith('http')) {
+        mediaPath = imagePath;
+      } else if (videoPath != null && !videoPath.startsWith('http')) {
+        mediaPath = videoPath;
+      } else if (filePath != null && !filePath.startsWith('http')) {
+        mediaPath = filePath;
+      }
+
+      final validationResult = await _validationService.validatePost(
+        text: content,
+        mediaPath: mediaPath,
+        mediaType: mediaType,
+      );
+
+      if (!validationResult.isValid) {
+        throw Exception('Content validation failed: ${validationResult.reason}. Only authentic Islamic content is allowed.');
+      }
+
+      final validatedDeed = DeedModel(
         id: deedId,
         userId: userId,
         userName: userName,
@@ -133,40 +151,88 @@ class DeedsRepository {
         mediaUrls: mediaUrls,
         mediaType: mediaType,
         interests: interests,
-        isValidated: false, // Always false initially - backend will validate
-        validationReason: null,
-        validationConfidence: null,
+        isValidated: true,
+        validationReason: validationResult.reason,
+        validationConfidence: validationResult.confidence,
         createdAt: now,
       );
 
-      // Save to Supabase database - backend validation will update isValidated
       await _supabase
           .from(AppConstants.collectionDeeds)
-          .insert(deed.toMap());
+          .insert(validatedDeed.toMap());
 
-      await _localDb.cacheDeed(deed.toLocal());
+      await _localDb.cacheDeed(validatedDeed.toLocal());
 
-      // Don't award XP yet - wait for backend validation
-      // XP will be awarded when backend sets isValidated to true
+      await _pointsService.addDeedPoints(
+        userId: userId,
+        points: 5.0,
+      );
 
-      return deed;
+      return validatedDeed;
     } catch (e) {
       throw Exception('Failed to create deed: $e');
     }
   }
 
-  /// Get deeds feed - only returns validated posts
+
+
+
   Stream<List<DeedModel>> getDeedsFeed({int limit = 20}) {
     return _supabase
         .from(AppConstants.collectionDeeds)
         .stream(primaryKey: ['id'])
-        .eq('is_validated', true) // Only show validated posts
+        .eq('is_validated', true)
         .order('created_at', ascending: false)
         .limit(limit)
-        .map((data) => data.map((item) => DeedModel.fromMap(item)).toList());
+        .map((data) {
+          final map = <String, DeedModel>{};
+          
+          for (final row in data) {
+            try {
+              final rowIdValue = row['id'];
+              if (rowIdValue == null) {
+                if (kDebugMode) {
+                  debugPrint('Skipping deed with null ID: $row');
+                }
+                continue;
+              }
+              
+              final rowId = rowIdValue.toString().trim();
+              if (rowId.isEmpty) {
+                if (kDebugMode) {
+                  debugPrint('Skipping deed with empty ID: $row');
+                }
+                continue;
+              }
+              
+              final deed = DeedModel.fromMap(row);
+
+              if (deed.id.isNotEmpty && deed.id.trim().isNotEmpty && deed.id == rowId) {
+                map[deed.id] = deed;
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('Error parsing deed in feed: $e');
+              }
+            }
+          }
+          
+          final list = map.values.toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          
+          final seenIds = <String>{};
+          final finalList = <DeedModel>[];
+          for (final deed in list) {
+            if (!seenIds.contains(deed.id)) {
+              seenIds.add(deed.id);
+              finalList.add(deed);
+            }
+          }
+          
+          return finalList;
+        });
   }
 
-  /// Get user deeds - shows all posts (validated and pending) for the user
   Stream<List<DeedModel>> getUserDeeds(String userId, {int limit = 50}) {
     return _supabase
         .from(AppConstants.collectionDeeds)
@@ -177,8 +243,18 @@ class DeedsRepository {
         .map((data) => data.map((item) => DeedModel.fromMap(item)).toList());
   }
 
+  Stream<bool> watchIsLiked(String deedId, String userId) {
+    return _supabase
+        .from('likes')
+        .stream(primaryKey: ['id'])
+        .map((data) {
+          return data.any((item) => 
+            item['deed_id'] == deedId && item['user_id'] == userId
+          );
+        });
+  }
+
   Future<void> likeDeed(String deedId, String userId) async {
-    // Get current deed
     final deedData = await _supabase
         .from(AppConstants.collectionDeeds)
         .select()
@@ -187,23 +263,31 @@ class DeedsRepository {
 
     if (deedData == null) return;
 
-    final likes = List<String>.from(deedData['likes'] ?? []);
-    final isLiked = likes.contains(userId);
+    final existingLike = await _supabase
+        .from('likes')
+        .select()
+        .eq('deed_id', deedId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    final isLiked = existingLike != null;
 
     if (isLiked) {
-      likes.remove(userId);
+      await _supabase
+          .from('likes')
+          .delete()
+          .eq('deed_id', deedId)
+          .eq('user_id', userId);
     } else {
-      likes.add(userId);
-    }
+      await _supabase
+          .from('likes')
+          .insert({
+            'id': const Uuid().v4(),
+            'deed_id': deedId,
+            'user_id': userId,
+            'created_at': DateTime.now().toIso8601String(),
+          });
 
-    await _supabase
-        .from(AppConstants.collectionDeeds)
-        .update({'likes': likes})
-        .eq('id', deedId);
-
-    await _localDb.updateDeedLikeStatus(deedId, !isLiked, likes.length);
-
-    if (!isLiked) {
       await _xpService.awardXPForLike(userId);
 
       final ownerId = deedData['user_id'] as String;
@@ -221,7 +305,9 @@ class DeedsRepository {
             likerName = likerData['display_name'] as String? ?? 'Someone';
           }
         } catch (e) {
-          // Fallback to 'Someone'
+          if (kDebugMode) {
+            debugPrint('Error fetching liker data: $e');
+          }
         }
 
         await _notificationRepo.createNotification(
@@ -233,6 +319,13 @@ class DeedsRepository {
         );
       }
     }
+
+    final likesCount = await _supabase
+        .from('likes')
+        .select('id')
+        .eq('deed_id', deedId);
+    
+    await _localDb.updateDeedLikeStatus(deedId, !isLiked, likesCount.length);
   }
 
   Future<void> shareDeed(String deedId, String userId) async {
@@ -254,38 +347,50 @@ class DeedsRepository {
   }
 
   Future<void> favoriteDeed(String deedId, String userId) async {
-    final userData = await _supabase
-        .from(AppConstants.collectionUsers)
-        .select('favorites')
-        .eq('id', userId)
+    final existingFavorite = await _supabase
+        .from('favorites')
+        .select()
+        .eq('deed_id', deedId)
+        .eq('user_id', userId)
         .maybeSingle();
 
-    if (userData == null) return;
-
-    final favorites = List<String>.from(userData['favorites'] ?? []);
-
-    if (favorites.contains(deedId)) {
-      favorites.remove(deedId);
+    if (existingFavorite != null) {
+      await _supabase
+          .from('favorites')
+          .delete()
+          .eq('deed_id', deedId)
+          .eq('user_id', userId);
     } else {
-      favorites.add(deedId);
+      await _supabase
+          .from('favorites')
+          .insert({
+            'id': const Uuid().v4(),
+            'deed_id': deedId,
+            'user_id': userId,
+            'created_at': DateTime.now().toIso8601String(),
+          });
       await _xpService.awardXPForFavorite(userId);
     }
-
-    await _supabase
-        .from(AppConstants.collectionUsers)
-        .update({'favorites': favorites})
-        .eq('id', userId);
   }
 
   Stream<bool> watchIsFavorited(String deedId, String userId) {
     return _supabase
-        .from(AppConstants.collectionUsers)
+        .from('favorites')
         .stream(primaryKey: ['id'])
-        .eq('id', userId)
         .map((data) {
-          if (data.isEmpty) return false;
-          final favorites = List<String>.from(data.first['favorites'] ?? []);
-          return favorites.contains(deedId);
+          return data.any((item) => 
+            item['deed_id'] == deedId && item['user_id'] == userId
+          );
+        });
+  }
+
+  Stream<List<String>> getFavoriteIdsStream(String userId) {
+    return _supabase
+        .from('favorites')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .map((data) {
+          return data.map((item) => item['deed_id'] as String).toList();
         });
   }
 
@@ -302,7 +407,6 @@ class DeedsRepository {
       throw Exception('Unauthorized');
     }
 
-    // Delete media from Supabase Storage
     final imageUrl = deedData['image_url'];
     if (imageUrl != null && imageUrl.toString().contains('supabase')) {
       try {
@@ -310,11 +414,12 @@ class DeedsRepository {
         final path = uri.pathSegments.last;
         await StorageService.deleteFile(bucket: 'deeds', filePath: path);
       } catch (e) {
-        // Ignore storage deletion errors
+        if (kDebugMode) {
+          debugPrint('Error deleting image: $e');
+        }
       }
     }
 
-    // Delete media URLs
     final mediaUrls = List<String>.from(deedData['media_urls'] ?? []);
     for (final url in mediaUrls) {
       if (url.contains('supabase')) {
@@ -323,7 +428,9 @@ class DeedsRepository {
           final path = uri.pathSegments.last;
           await StorageService.deleteFile(bucket: 'deeds', filePath: path);
         } catch (e) {
-          // Ignore storage deletion errors
+          if (kDebugMode) {
+            debugPrint('Error deleting media: $e');
+          }
         }
       }
     }

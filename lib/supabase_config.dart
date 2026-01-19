@@ -5,10 +5,13 @@
 /// Project URL: https://supabase.com/dashboard/project/drvzadcgkfranrcmaixs
 class SupabaseConfig {
   // Your Supabase project URL
-  static const String supabaseUrl = 'https://drvzadcgkfranrcmaixs.supabase.co';
+  static const String supabaseUrl = 'https://razquazlolqlnrdgregm.supabase.co';
   
   // Your Supabase anon public key
-  static const String supabaseAnonKey = 'sb_publishable_9fm5xzxTFQA5RUeGdj_X5w_KSBbEnKP';
+  static const String supabaseAnonKey = 'sb_publishable_XyRIwww2pfKcGR90OJYTMg_pqztBbdq';
+  
+  // Groq API key for AI features
+  static const String groqApiKey = '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';
   
   // Google Client IDs for OAuth
   static const String googleIosClientId = '105816685190-751mhaubnde07nfirqs59ofm9gno18f5.apps.googleusercontent.com';

@@ -8,15 +8,12 @@
 import 'package:ameen_mobile_app/ameen_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
   testWidgets('App starts correctly', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(
-      const ProviderScope(
-        child: AmeenApp(),
-      ),
+      const AmeenApp(),
     );
 
     // Verify that the app builds without errors

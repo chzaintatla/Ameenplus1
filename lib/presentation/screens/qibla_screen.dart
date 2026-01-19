@@ -1,6 +1,5 @@
 ﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import '../../services/qibla_compass_service.dart';
@@ -9,11 +8,7 @@ import '../../widgets/kaaba_image_widget.dart';
 const double kaabaLatitude = 21.4225241;
 const double kaabaLongitude = 39.8261818;
 
-final qiblaCompassServiceProvider = Provider<QiblaCompassService>((ref) {
-  return QiblaCompassService();
-});
-
-final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
+Stream<Map<String, dynamic>> _getQiblaStream() async* {
   try {
     bool serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -80,32 +75,40 @@ final qiblaProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
       'qiblaDirection': 0.0,
     };
   }
-});
+}
 
 
-class QiblaScreen extends ConsumerStatefulWidget {
+class QiblaScreen extends StatefulWidget {
   const QiblaScreen({super.key});
 
   @override
-  ConsumerState<QiblaScreen> createState() => _QiblaScreenState();
+  State<QiblaScreen> createState() => _QiblaScreenState();
 }
 
-class _QiblaScreenState extends ConsumerState<QiblaScreen> {
+class _QiblaScreenState extends State<QiblaScreen> {
   CompassAccuracy? _compassAccuracy;
   QiblaLocationAccuracy? _locationAccuracy;
   bool _isValidating = false;
+  final QiblaCompassService _qiblaService = QiblaCompassService();
+  Stream<Map<String, dynamic>>? _qiblaStream;
 
   @override
   void initState() {
     super.initState();
+    _qiblaStream = _getQiblaStream();
     _validateAccuracy();
+  }
+
+  void _reloadQibla() {
+    setState(() {
+      _qiblaStream = _getQiblaStream();
+    });
   }
 
   Future<void> _validateAccuracy() async {
     setState(() => _isValidating = true);
-    final qiblaService = ref.read(qiblaCompassServiceProvider);
-    final compassAcc = await qiblaService.validateCompassAccuracy();
-    final locationAcc = await qiblaService.validateLocationAccuracy();
+    final compassAcc = await _qiblaService.validateCompassAccuracy();
+    final locationAcc = await _qiblaService.validateLocationAccuracy();
     setState(() {
       _compassAccuracy = compassAcc;
       _locationAccuracy = locationAcc;
@@ -115,11 +118,11 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final qiblaAsync = ref.watch(qiblaProvider);
+    final qiblaStream = _qiblaStream ?? _getQiblaStream();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Qibla Direction'),
+        title: const Text('Qibla Compass'),
         actions: [
           IconButton(
             icon: _isValidating
@@ -134,9 +137,51 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
           ),
         ],
       ),
-      body: qiblaAsync.when(
-        data: (data) {
-          if (data.containsKey('error')) {
+      body: StreamBuilder<Map<String, dynamic>>(
+        stream: qiblaStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading Qibla',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    snapshot.error.toString(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _reloadQibla,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final data = snapshot.data!;
+          
+          if (data['error'] != null) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -152,21 +197,16 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      data['error'] as String,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
+                  Text(
+                    data['error'] as String,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      ref.invalidate(qiblaProvider);
-                    },
+                    onPressed: _reloadQibla,
                     icon: const Icon(Icons.refresh),
                     label: const Text('Retry'),
                   ),
@@ -175,16 +215,61 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
             );
           }
 
-          final compassHeading = (data['compassHeading'] as num).toDouble();
-          final qiblaDirection = (data['qiblaDirection'] as num).toDouble();
-          final latitude = data['latitude'] as double?;
-          final longitude = data['longitude'] as double?;
+          return _buildQiblaContent(context, data);
+        },
+      ),
+    );
+  }
 
-          final qiblaService = ref.read(qiblaCompassServiceProvider);
-          final angleDifference = qiblaService.calculateAngleDifference(compassHeading, qiblaDirection);
-          final isPointing = qiblaService.isPointingToQibla(compassHeading, qiblaDirection);
+  Widget _buildQiblaContent(BuildContext context, Map<String, dynamic> data) {
+    if (data.containsKey('error')) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                data['error'] as String,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                _reloadQibla();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
 
-          return ListView(
+    final compassHeading = (data['compassHeading'] as num).toDouble();
+    final qiblaDirection = (data['qiblaDirection'] as num).toDouble();
+    final latitude = data['latitude'] as double?;
+    final longitude = data['longitude'] as double?;
+
+    final angleDifference = _qiblaService.calculateAngleDifference(compassHeading, qiblaDirection);
+    final isPointing = _qiblaService.isPointingToQibla(compassHeading, qiblaDirection);
+
+    return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               if (_compassAccuracy != null || _locationAccuracy != null)
@@ -436,46 +521,6 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
               ),
             ],
           );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading Qibla',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  error.toString(),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ref.invalidate(qiblaProvider);
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Color _getAccuracyCardColor() {
@@ -520,7 +565,7 @@ class _QiblaScreenState extends ConsumerState<QiblaScreen> {
         : '';
     
     if (compassMsg.isNotEmpty && locationMsg.isNotEmpty) {
-      return '$compassMsg â€¢ $locationMsg';
+      return '$compassMsg • $locationMsg';
     } else if (compassMsg.isNotEmpty) {
       return compassMsg;
     } else if (locationMsg.isNotEmpty) {

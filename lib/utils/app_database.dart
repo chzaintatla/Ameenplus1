@@ -149,6 +149,7 @@ class AppDatabase {
         isha TEXT NOT NULL,
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
+        madhab TEXT,
         cachedAt TEXT NOT NULL
       )
     ''');
@@ -260,6 +261,15 @@ class AppDatabase {
       }
       try {
         await db.execute('ALTER TABLE habits ADD COLUMN autoRemoveAfterCompletion INTEGER DEFAULT 0');
+      } catch (e) {
+        // Column may already exist, ignore
+      }
+    }
+    
+    // Version 3: Add madhab column to prayer_times table
+    if (oldVersion < 3) {
+      try {
+        await db.execute('ALTER TABLE prayer_times ADD COLUMN madhab TEXT');
       } catch (e) {
         // Column may already exist, ignore
       }

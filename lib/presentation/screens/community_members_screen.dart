@@ -1,52 +1,10 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/community_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../network/repositories/friends_repository.dart';
+import '../../network/repositories/community_repository.dart';
 
-final communityMembersProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, communityId) async {
-  final supabase = Supabase.instance.client;
-  final repository = ref.read(communityRepositoryProvider);
-  final community = await repository.getCommunity(communityId);
-  if (community == null) return [];
-
-  final members = <Map<String, dynamic>>[];
-
-  for (var memberId in community.members) {
-    try {
-      final userDoc = await supabase
-          .from('users')
-          .select()
-          .eq('id', memberId)
-          .maybeSingle();
-      
-      if (userDoc != null) {
-        members.add({
-          'id': memberId,
-          'name': userDoc['display_name'] ?? userDoc['displayName'] ?? 'Unknown',
-          'photoUrl': userDoc['avatar_url'] ?? userDoc['profilePicture'] ?? userDoc['photoUrl'],
-        });
-      } else {
-        members.add({
-          'id': memberId,
-          'name': 'Unknown',
-          'photoUrl': null,
-        });
-      }
-    } catch (e) {
-      members.add({
-        'id': memberId,
-        'name': 'Unknown',
-        'photoUrl': null,
-      });
-    }
-  }
-
-  return members;
-});
-
-class CommunityMembersScreen extends ConsumerWidget {
+class CommunityMembersScreen extends StatefulWidget {
   final String communityId;
 
   const CommunityMembersScreen({
@@ -55,45 +13,151 @@ class CommunityMembersScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final membersAsync = ref.watch(communityMembersProvider(communityId));
-    final currentUser = ref.watch(authStateProvider);
-    final friendsRepo = FriendsRepository();
+  State<CommunityMembersScreen> createState() => _CommunityMembersScreenState();
+}
+
+class _CommunityMembersScreenState extends State<CommunityMembersScreen> {
+  final CommunityRepository _communityRepo = CommunityRepository();
+  final FriendsRepository _friendsRepo = FriendsRepository();
+  List<Map<String, dynamic>> _members = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMembers();
+  }
+
+  Future<void> _loadMembers() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final community = await _communityRepo.getCommunity(widget.communityId);
+      if (community == null) {
+        if (mounted) {
+          setState(() {
+            _members = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      final members = <Map<String, dynamic>>[];
+
+      for (var memberId in community.members) {
+        try {
+          final userDoc = await supabase
+              .from('users')
+              .select()
+              .eq('id', memberId)
+              .maybeSingle();
+          
+          if (userDoc != null) {
+            members.add({
+              'id': memberId,
+              'name': userDoc['display_name'] ?? userDoc['displayName'] ?? 'Unknown',
+              'photoUrl': userDoc['avatar_url'] ?? userDoc['profilePicture'] ?? userDoc['photoUrl'],
+            });
+          } else {
+            members.add({
+              'id': memberId,
+              'name': 'Unknown',
+              'photoUrl': null,
+            });
+          }
+        } catch (e) {
+          members.add({
+            'id': memberId,
+            'name': 'Unknown',
+            'photoUrl': null,
+          });
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _members = members;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Community Members'),
       ),
-      body: membersAsync.when(
-        data: (members) {
-          if (members.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.people_outline,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading members',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No members found',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: members.length,
-            itemBuilder: (context, index) {
-              final member = members[index];
-              final isCurrentUser = member['id'] == currentUser.value?.uid;
+                )
+              : _members.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.people_outline,
+                            size: 64,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No members found',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _members.length,
+                      itemBuilder: (context, index) {
+                        final member = _members[index];
+                        final isCurrentUser = member['id'] == currentUser?.uid;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -130,7 +194,7 @@ class CommunityMembersScreen extends ConsumerWidget {
                         )
                       : FutureBuilder<bool>(
                           future: _checkIfFriends(
-                            currentUser.value?.uid ?? '',
+                            currentUser?.uid ?? '',
                             member['id'] as String,
                           ),
                           builder: (context, snapshot) {
@@ -146,10 +210,10 @@ class CommunityMembersScreen extends ConsumerWidget {
                             }
                             return ElevatedButton.icon(
                               onPressed: () async {
-                                final user = currentUser.value;
+                                final user = currentUser;
                                 if (user != null) {
                                   try {
-                                    await friendsRepo.sendFriendRequest(
+                                    await _friendsRepo.sendFriendRequest(
                                       user.uid,
                                       member['id'] as String,
                                     );
@@ -183,36 +247,8 @@ class CommunityMembersScreen extends ConsumerWidget {
                         ),
                 ),
               );
-            },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading members',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error.toString(),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
+                      },
+                    ),
     );
   }
 

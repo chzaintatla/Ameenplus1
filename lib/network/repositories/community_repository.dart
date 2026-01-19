@@ -100,6 +100,26 @@ class CommunityRepository {
     }
   }
 
+  Future<void> updateCommunityImage(String communityId, String userId, String imageUrl) async {
+    final communityData = await _supabase
+        .from(AppConstants.collectionCommunities)
+        .select('created_by')
+        .eq('id', communityId)
+        .maybeSingle();
+
+    if (communityData == null || (communityData['created_by'] ?? communityData['createdBy']) != userId) {
+      throw Exception('Only the community owner can update the image');
+    }
+
+    await _supabase
+        .from(AppConstants.collectionCommunities)
+        .update({
+          'image_url': imageUrl,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', communityId);
+  }
+
   Future<void> deleteCommunity(String communityId, String userId) async {
     final communityData = await _supabase
         .from(AppConstants.collectionCommunities)

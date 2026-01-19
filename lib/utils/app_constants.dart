@@ -9,12 +9,13 @@
   static const String supabaseAnonKey = '...'; // Add your anon key here
 
   static const String localDatabaseName = 'ameen_local.db';
-  static const int localDatabaseVersion = 2;
+  static const int localDatabaseVersion = 3;
 
   static const String keyUserId = 'user_id';
   static const String keyUserToken = 'user_token';
   static const String keyIsLoggedIn = 'is_logged_in';
   static const String keyThemeMode = 'theme_mode';
+  static const String keyGuestMode = 'guest_mode';
   static const String keyLanguage = 'language';
   static const String keyNotificationsEnabled = 'notifications_enabled';
   static const String keyPrayerNotifications = 'prayer_notifications';

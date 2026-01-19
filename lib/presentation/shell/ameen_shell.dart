@@ -1,13 +1,20 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../network/repositories/notification_repository.dart';
 
-import '../../providers/notification_providers.dart';
-
-class AmeenShell extends ConsumerWidget {
+class AmeenShell extends StatefulWidget {
   const AmeenShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
+
+  @override
+  State<AmeenShell> createState() => _AmeenShellState();
+}
+
+class _AmeenShellState extends State<AmeenShell> {
+  final NotificationRepository _notificationRepo = NotificationRepository();
+  Stream<int>? _unreadCountStream;
 
   static const _titles = <String>[
     'Home',
@@ -15,6 +22,15 @@ class AmeenShell extends ConsumerWidget {
     '',
     'Profile',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      _unreadCountStream = _notificationRepo.watchUnreadCount(currentUser.uid);
+    }
+  }
 
   void _onTap(int index, StatefulNavigationShell navigationShell) {
     // Map display index to actual branch index
@@ -38,11 +54,10 @@ class AmeenShell extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     // Map actual index to display index (accounting for Add button)
-    final actualIndex = navigationShell.currentIndex;
+    final actualIndex = widget.navigationShell.currentIndex;
     final displayIndex = actualIndex >= 2 ? actualIndex + 1 : actualIndex;
-    final unreadCountAsync = ref.watch(unreadCountProvider);
 
     return Scaffold(
       appBar: (actualIndex == 1 || actualIndex == 2 || actualIndex == 3) ? null : AppBar(
@@ -63,8 +78,10 @@ class AmeenShell extends ConsumerWidget {
                   },
                   icon: const Icon(Icons.notifications_none_rounded),
                 ),
-                unreadCountAsync.maybeWhen(
-                  data: (count) {
+                StreamBuilder<int>(
+                  stream: _unreadCountStream,
+                  builder: (context, snapshot) {
+                    final count = snapshot.data ?? 0;
                     if (count == 0) return const SizedBox.shrink();
                     return Positioned(
                       right: 8,
@@ -91,13 +108,12 @@ class AmeenShell extends ConsumerWidget {
                       ),
                     );
                   },
-                  orElse: () => const SizedBox.shrink(),
                 ),
               ],
             ),
         ],
       ),
-      body: navigationShell,
+      body: widget.navigationShell,
       floatingActionButton: (actualIndex == 0) 
           ? FloatingActionButton(
               onPressed: () {
@@ -130,7 +146,7 @@ class AmeenShell extends ConsumerWidget {
             // Add button - open camera screen
             context.push('/camera');
           } else {
-            _onTap(index, navigationShell);
+            _onTap(index, widget.navigationShell);
           }
         },
         indicatorColor: Theme.of(context).brightness == Brightness.light

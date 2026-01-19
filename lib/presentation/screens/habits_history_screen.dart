@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/habits_providers.dart';
-import '../../providers/deeds_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/habit_model.dart';
 import '../../models/deed_model.dart';
 import '../../utils/app_constants.dart';
+import '../../network/repositories/habits_repository.dart';
+import '../../network/repositories/deeds_repository.dart';
 
-class HabitsHistoryScreen extends ConsumerStatefulWidget {
+class HabitsHistoryScreen extends StatefulWidget {
   const HabitsHistoryScreen({super.key});
 
   @override
-  ConsumerState<HabitsHistoryScreen> createState() => _HabitsHistoryScreenState();
+  State<HabitsHistoryScreen> createState() => _HabitsHistoryScreenState();
 }
 
-class _HabitsHistoryScreenState extends ConsumerState<HabitsHistoryScreen>
+class _HabitsHistoryScreenState extends State<HabitsHistoryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final HabitsRepository _habitsRepo = HabitsRepository();
+  final DeedsRepository _deedsRepo = DeedsRepository();
 
   @override
   void initState() {
@@ -33,7 +34,7 @@ class _HabitsHistoryScreenState extends ConsumerState<HabitsHistoryScreen>
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = ref.watch(authStateProvider).value;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
       return Scaffold(
@@ -66,14 +67,33 @@ class _HabitsHistoryScreenState extends ConsumerState<HabitsHistoryScreen>
   }
 
   Widget _buildCreatedHabitsTab(String userId) {
-    final habitsAsync = ref.watch(userHabitsProvider);
-
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(userHabitsProvider);
+        setState(() {}); // Trigger rebuild to refresh stream
       },
-      child: habitsAsync.when(
-        data: (habits) {
+      child: StreamBuilder<List<HabitModel>>(
+        stream: _habitsRepo.getUserHabits(userId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Error loading habits: ${snapshot.error}'),
+                ],
+              ),
+            );
+          }
+          final habits = snapshot.data ?? [];
           if (habits.isEmpty) {
             return Center(
               child: Column(
@@ -105,34 +125,38 @@ class _HabitsHistoryScreenState extends ConsumerState<HabitsHistoryScreen>
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text('Error loading habits: $e'),
-            ],
-          ),
-        ),
       ),
     );
   }
 
   Widget _buildCompletedTab(String userId) {
-    final deedsAsync = ref.watch(userDeedsProvider(userId));
-
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(userDeedsProvider(userId));
+        setState(() {}); // Trigger rebuild to refresh stream
       },
-      child: deedsAsync.when(
-        data: (deeds) {
+      child: StreamBuilder<List<DeedModel>>(
+        stream: _deedsRepo.getUserDeeds(userId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Error loading deeds: ${snapshot.error}'),
+                ],
+              ),
+            );
+          }
+          final deeds = snapshot.data ?? [];
           // Filter only validated/completed deeds
           final completedDeeds = deeds.where((d) => d.isValidated).toList();
 
@@ -175,166 +199,144 @@ class _HabitsHistoryScreenState extends ConsumerState<HabitsHistoryScreen>
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text('Error loading deeds: $e'),
-            ],
-          ),
-        ),
       ),
     );
   }
 
   Widget _buildPointsTab(String userId) {
-    final habitsAsync = ref.watch(userHabitsProvider);
-    final deedsAsync = ref.watch(userDeedsProvider(userId));
-
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(userHabitsProvider);
-        ref.invalidate(userDeedsProvider(userId));
+        setState(() {}); // Trigger rebuild to refresh streams
       },
-      child: FutureBuilder(
-        future: Future.wait([
-          habitsAsync.when(
-            data: (habits) => Future.value(habits),
-            loading: () => Future.value(<HabitModel>[]),
-            error: (_, __) => Future.value(<HabitModel>[]),
-          ),
-          deedsAsync.when(
-            data: (deeds) => Future.value(deeds),
-            loading: () => Future.value(<DeedModel>[]),
-            error: (_, __) => Future.value(<DeedModel>[]),
-          ),
-        ]),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+      child: StreamBuilder<List<HabitModel>>(
+        stream: _habitsRepo.getUserHabits(userId),
+        builder: (context, habitsSnapshot) {
+          if (habitsSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          final habits = habitsSnapshot.data ?? [];
+          
+          return StreamBuilder<List<DeedModel>>(
+            stream: _deedsRepo.getUserDeeds(userId),
+            builder: (context, deedsSnapshot) {
+              if (deedsSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final deeds = deedsSnapshot.data ?? [];
 
-          final habits = snapshot.data![0] as List<HabitModel>;
-          final deeds = snapshot.data![1] as List<DeedModel>;
+              // Calculate points
+              int habitPoints = 0;
+              int deedPoints = 0;
+              int totalCompletions = 0;
+              int totalStreakDays = 0;
 
-          // Calculate points
-          int habitPoints = 0;
-          int deedPoints = 0;
-          int totalCompletions = 0;
-          int totalStreakDays = 0;
+              for (var habit in habits) {
+                totalCompletions += habit.totalCompletions;
+                totalStreakDays += habit.streakDays;
+                // Points from habit completions
+                habitPoints += habit.totalCompletions * AppConstants.xpPerHabitComplete;
+                // Points from streaks
+                habitPoints += habit.streakDays * AppConstants.xpPerStreakDay;
+              }
 
-          for (var habit in habits) {
-            totalCompletions += habit.totalCompletions;
-            totalStreakDays += habit.streakDays;
-            // Points from habit completions
-            habitPoints += habit.totalCompletions * AppConstants.xpPerHabitComplete;
-            // Points from streaks
-            habitPoints += habit.streakDays * AppConstants.xpPerStreakDay;
-          }
+              // Points from validated deeds
+              final validatedDeeds = deeds.where((d) => d.isValidated).length;
+              deedPoints = validatedDeeds * AppConstants.xpPerDeedPost;
 
-          // Points from validated deeds
-          final validatedDeeds = deeds.where((d) => d.isValidated).length;
-          deedPoints = validatedDeeds * AppConstants.xpPerDeedPost;
+              final totalPoints = habitPoints + deedPoints;
 
-          final totalPoints = habitPoints + deedPoints;
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // Summary Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Points Summary',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Summary Card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildPointsStat(
-                            context,
-                            'Total Points',
-                            totalPoints.toString(),
-                            Icons.star,
-                            Colors.amber,
+                          Text(
+                            'Points Summary',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
-                          _buildPointsStat(
-                            context,
-                            'Habit Points',
-                            habitPoints.toString(),
-                            Icons.check_circle,
-                            Colors.green,
-                          ),
-                          _buildPointsStat(
-                            context,
-                            'Deed Points',
-                            deedPoints.toString(),
-                            Icons.article,
-                            Colors.blue,
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildPointsStat(
+                                context,
+                                'Total Points',
+                                totalPoints.toString(),
+                                Icons.star,
+                                Colors.amber,
+                              ),
+                              _buildPointsStat(
+                                context,
+                                'Habit Points',
+                                habitPoints.toString(),
+                                Icons.check_circle,
+                                Colors.green,
+                              ),
+                              _buildPointsStat(
+                                context,
+                                'Deed Points',
+                                deedPoints.toString(),
+                                Icons.article,
+                                Colors.blue,
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Detailed Breakdown
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Breakdown',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                  const SizedBox(height: 16),
+                  // Detailed Breakdown
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Breakdown',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildBreakdownItem(
+                            context,
+                            'Habit Completions',
+                            totalCompletions.toString(),
+                            '$totalCompletions × ${AppConstants.xpPerHabitComplete} XP',
+                            habitPoints > 0 ? (totalCompletions * AppConstants.xpPerHabitComplete) : 0,
+                          ),
+                          const Divider(),
+                          _buildBreakdownItem(
+                            context,
+                            'Streak Days',
+                            totalStreakDays.toString(),
+                            '$totalStreakDays × ${AppConstants.xpPerStreakDay} XP',
+                            habitPoints > 0 ? (totalStreakDays * AppConstants.xpPerStreakDay) : 0,
+                          ),
+                          const Divider(),
+                          _buildBreakdownItem(
+                            context,
+                            'Validated Deeds',
+                            validatedDeeds.toString(),
+                            '$validatedDeeds × ${AppConstants.xpPerDeedPost} XP',
+                            deedPoints,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      _buildBreakdownItem(
-                        context,
-                        'Habit Completions',
-                        totalCompletions.toString(),
-                        '$totalCompletions × ${AppConstants.xpPerHabitComplete} XP',
-                        habitPoints > 0 ? (totalCompletions * AppConstants.xpPerHabitComplete) : 0,
-                      ),
-                      const Divider(),
-                      _buildBreakdownItem(
-                        context,
-                        'Streak Days',
-                        totalStreakDays.toString(),
-                        '$totalStreakDays × ${AppConstants.xpPerStreakDay} XP',
-                        habitPoints > 0 ? (totalStreakDays * AppConstants.xpPerStreakDay) : 0,
-                      ),
-                      const Divider(),
-                      _buildBreakdownItem(
-                        context,
-                        'Validated Deeds',
-                        validatedDeeds.toString(),
-                        '$validatedDeeds × ${AppConstants.xpPerDeedPost} XP',
-                        deedPoints,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         },
       ),

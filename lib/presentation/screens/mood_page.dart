@@ -14,15 +14,15 @@ class _MoodPageState extends State<MoodPage> {
   String? selectedMood;
 
   final List<Map<String, dynamic>> moods = [
-    {'mood': AppConstants.moodAngry, 'label': 'Angry', 'emoji': 'ðŸ˜ ', 'color': const Color(0xFFD32F2F)},
-    {'mood': AppConstants.moodSad, 'label': 'Sad', 'emoji': 'ðŸ˜¢', 'color': const Color(0xFF1976D2)},
-    {'mood': AppConstants.moodHappy, 'label': 'Happy', 'emoji': 'ðŸ˜Š', 'color': const Color(0xFFFFA726)},
-    {'mood': AppConstants.moodStressed, 'label': 'Stressed', 'emoji': 'ðŸ˜°', 'color': const Color(0xFF7B1FA2)},
-    {'mood': AppConstants.moodDemotivated, 'label': 'Demotivated', 'emoji': 'ðŸ˜”', 'color': const Color(0xFF616161)},
-    {'mood': AppConstants.moodLonely, 'label': 'Lonely', 'emoji': 'ðŸ˜ž', 'color': const Color(0xFF5E35B1)},
-    {'mood': AppConstants.moodRepent, 'label': 'Want to Repent', 'emoji': 'ðŸ˜Œ', 'color': const Color(0xFF4CAF50)},
-    {'mood': AppConstants.moodLearn, 'label': 'Want to Learn', 'emoji': 'ðŸ¤“', 'color': const Color(0xFF00ACC1)},
-    {'mood': AppConstants.moodPeace, 'label': 'Seeking Peace', 'emoji': 'ðŸ˜‡', 'color': const Color(0xFF66BB6A)},
+    {'mood': AppConstants.moodAngry, 'label': 'Angry', 'emoji': '😠', 'color': const Color(0xFFD32F2F)},
+    {'mood': AppConstants.moodSad, 'label': 'Sad', 'emoji': '😢', 'color': const Color(0xFF1976D2)},
+    {'mood': AppConstants.moodHappy, 'label': 'Happy', 'emoji': '😊', 'color': const Color(0xFFFFA726)},
+    {'mood': AppConstants.moodStressed, 'label': 'Stressed', 'emoji': '😰', 'color': const Color(0xFF7B1FA2)},
+    {'mood': AppConstants.moodDemotivated, 'label': 'Demotivated', 'emoji': '😔', 'color': const Color(0xFF616161)},
+    {'mood': AppConstants.moodLonely, 'label': 'Lonely', 'emoji': '😞', 'color': const Color(0xFF5E35B1)},
+    {'mood': AppConstants.moodRepent, 'label': 'Want to Repent', 'emoji': '😌', 'color': const Color(0xFF4CAF50)},
+    {'mood': AppConstants.moodLearn, 'label': 'Want to Learn', 'emoji': '🤔', 'color': const Color(0xFF00ACC1)},
+    {'mood': AppConstants.moodPeace, 'label': 'Seeking Peace', 'emoji': '😇', 'color': const Color(0xFF66BB6A)},
   ];
 
   @override
@@ -241,6 +241,8 @@ class _MoodPageState extends State<MoodPage> {
         contentColor = const Color(0xFF4CAF50);
       case 'dua':
         contentColor = const Color(0xFF2196F3);
+      case 'incident':
+        contentColor = const Color(0xFFFF9800);
       default:
         contentColor = const Color(0xFF9C27B0);
     }
@@ -272,17 +274,19 @@ class _MoodPageState extends State<MoodPage> {
                 const Spacer(),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              suggestion.arabicText,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w500,
-                height: 2,
+            if (suggestion.arabicText.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                suggestion.arabicText,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w500,
+                  height: 2,
+                ),
+                textAlign: TextAlign.right,
+                textDirection: TextDirection.rtl,
               ),
-              textAlign: TextAlign.right,
-              textDirection: TextDirection.rtl,
-            ),
+            ],
             const SizedBox(height: 12),
             Text(
               suggestion.translation,
@@ -291,7 +295,7 @@ class _MoodPageState extends State<MoodPage> {
             if (suggestion.reference != null) ...[
               const SizedBox(height: 8),
               Text(
-                'â€” ${suggestion.reference}',
+                '— ${suggestion.reference}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontStyle: FontStyle.italic,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,

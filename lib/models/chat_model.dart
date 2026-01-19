@@ -99,13 +99,15 @@ class MessageModel {
       senderName: data['sender_name'] ?? data['senderName'] ?? 'Anonymous',
       senderPhotoUrl: data['sender_photo_url'] ?? data['senderPhotoUrl'],
       content: data['content'] ?? '',
-      type: data['type'] ?? 'text',
+      type: data['type'] ?? data['message_type'] ?? 'text',
       mediaUrl: data['media_url'] ?? data['mediaUrl'],
       metadata: data['metadata'],
       read: data['read'] ?? false,
       timestamp: data['timestamp'] != null
           ? (data['timestamp'] is String ? DateTime.parse(data['timestamp']) : data['timestamp'] as DateTime)
-          : DateTime.now(),
+          : (data['created_at'] != null
+              ? (data['created_at'] is String ? DateTime.parse(data['created_at']) : data['created_at'] as DateTime)
+              : DateTime.now()),
     );
   }
 

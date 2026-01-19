@@ -1,17 +1,16 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
-import '../../providers/auth_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../utils/points_service.dart';
 
-class TasbihCounterScreen extends ConsumerStatefulWidget {
+class TasbihCounterScreen extends StatefulWidget {
   const TasbihCounterScreen({super.key});
 
   @override
-  ConsumerState<TasbihCounterScreen> createState() => _TasbihCounterScreenState();
+  State<TasbihCounterScreen> createState() => _TasbihCounterScreenState();
 }
 
-class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
+class _TasbihCounterScreenState extends State<TasbihCounterScreen>
     with TickerProviderStateMixin {
   int _counter = 0;
   int _selectedWidget = 0;
@@ -69,7 +68,7 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
     });
 
     if (_counter % 100 == 0) {
-      final user = ref.read(authStateProvider).value;
+      final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final pointsService = PointsService();
         await pointsService.addTasbihPoints(user.uid, 100);
@@ -97,6 +96,53 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
     final pointsEarned = (_counter / 100).floor() * PointsService.tasbihPointsPer100;
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Tasbih Counter',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                builder: (context) => Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _widgets.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final widget = entry.value;
+                      return ListTile(
+                        leading: Icon(widget['icon'], color: widget['color']),
+                        title: Text(widget['name']),
+                        trailing: _selectedWidget == index
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : null,
+                        onTap: () {
+                          setState(() {
+                            _selectedWidget = index;
+                          });
+                          Navigator.pop(context);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.settings),
+          ),
+        ],
+      ),
+      extendBodyBehindAppBar: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -111,52 +157,6 @@ class _TasbihCounterScreenState extends ConsumerState<TasbihCounterScreen>
         child: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Tasbih Counter',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          builder: (context) => Container(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: _widgets.asMap().entries.map((entry) {
-                                final index = entry.key;
-                                final widget = entry.value;
-                                return ListTile(
-                                  leading: Icon(widget['icon'], color: widget['color']),
-                                  title: Text(widget['name']),
-                                  trailing: _selectedWidget == index
-                                      ? const Icon(Icons.check, color: Colors.green)
-                                      : null,
-                                  onTap: () {
-                                    setState(() {
-                                      _selectedWidget = index;
-                                    });
-                                    Navigator.pop(context);
-                                  },
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.settings, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
               Expanded(
                 child: Center(
                   child: Column(

@@ -1,14 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/groq_api_service.dart';
 import '../../services/ai_validation_service.dart';
 import '../../services/chat_database_service.dart';
-import '../../providers/profile_providers.dart';
+import '../../network/repositories/user_profile_repository.dart';
 
-class AIChatbotScreen extends ConsumerStatefulWidget {
+class AIChatbotScreen extends StatefulWidget {
   final String? initialMessage;
   final String? mediaPath;
   final String? mediaType;
@@ -21,10 +21,11 @@ class AIChatbotScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<AIChatbotScreen> createState() => _AIChatbotScreenState();
+  State<AIChatbotScreen> createState() => _AIChatbotScreenState();
 }
 
-class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
+class _AIChatbotScreenState extends State<AIChatbotScreen> {
+  final UserProfileRepository _profileRepo = getUserProfileRepository();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
@@ -85,10 +86,10 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
       _messages.add(ChatMessage(
         text:
             'Assalamu Alaikum! I\'m your Islamic AI assistant. I can help you with:\n\n'
-            'â€¢ Islamic questions and guidance\n'
-            'â€¢ Quran and Hadith references\n'
-            'â€¢ Daily motivation and reminders\n'
-            'â€¢ App feature explanations\n\n'
+            '• Islamic questions and guidance\n'
+            '• Quran and Hadith references\n'
+            '• Daily motivation and reminders\n'
+            '• App feature explanations\n\n'
             'Please note: I only discuss Islamic topics. How can I help you today?',
         isUser: false,
         timestamp: DateTime.now(),
@@ -197,8 +198,10 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
       final messageWithLanguage = messageText + languageInstruction;
 
       // Get user profile for personalization
-      final profileAsync = ref.read(currentUserProfileProvider);
-      final userProfile = profileAsync.value;
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final userProfile = currentUser != null 
+          ? await _profileRepo.getProfile(currentUser.uid)
+          : null;
 
       final response = await _groqService.chat(
         message: messageWithLanguage,
@@ -642,10 +645,10 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
-              Text('â€¢ Islamic questions and guidance'),
-              Text('â€¢ Quran and Hadith references'),
-              Text('â€¢ Daily motivation'),
-              Text('â€¢ App feature explanations'),
+              Text('• Islamic questions and guidance'),
+              Text('• Quran and Hadith references'),
+              Text('• Daily motivation'),
+              Text('• App feature explanations'),
               SizedBox(height: 16),
               Text(
                 'Important:',
@@ -660,8 +663,8 @@ class _AIChatbotScreenState extends ConsumerState<AIChatbotScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
-              Text('â€¢ Long press on any message to delete it'),
-              Text('â€¢ Use the menu to delete all messages'),
+              Text('• Long press on any message to delete it'),
+              Text('• Use the menu to delete all messages'),
             ],
           ),
         ),

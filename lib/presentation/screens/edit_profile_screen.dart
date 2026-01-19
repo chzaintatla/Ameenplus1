@@ -1,21 +1,23 @@
 ﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import '../../utils/permission_service.dart';
 import '../../viewmodels/profile_viewmodel.dart';
+import '../../network/repositories/auth_repository.dart';
+import '../../network/repositories/user_profile_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class EditProfileScreen extends ConsumerStatefulWidget {
+class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
   @override
-  ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _bioController = TextEditingController();
@@ -31,6 +33,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   bool _isEmailPublic = false;
   bool _isPhonePublic = false;
   bool _useCalendarPicker = true;
+  
+  late final ProfileViewModel _viewModel;
+  ProfileState _profileState = ProfileState.initial();
 
   final List<String> _availableInterests = [
     'Quran',
@@ -54,15 +59,43 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    final authRepo = AuthRepository();
+    final profileRepo = SupabaseUserProfileRepository(Supabase.instance.client);
+    _viewModel = ProfileViewModel(
+      authRepository: authRepo,
+      profileRepository: profileRepo,
+    );
+    _viewModel.addListener(_updateProfileState);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadProfile();
     });
   }
 
-  void _loadProfile() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final profileState = ref.read(profileViewModelProvider);
-      final profile = profileState.profile;
+  void _updateProfileState() {
+    if (mounted) {
+      setState(() {
+        _profileState = _viewModel.state;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_updateProfileState);
+    _viewModel.dispose();
+    _nameController.dispose();
+    _bioController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _ageController.dispose();
+    _birthdayController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    await _viewModel.loadProfile();
+    _updateProfileState();
+    final profile = _profileState.profile;
 
       if (profile != null) {
         setState(() {
@@ -84,19 +117,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           }
         });
       }
-    });
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _bioController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _ageController.dispose();
-    _birthdayController.dispose();
-    super.dispose();
-  }
 
   Future<void> _pickImage({required ImageSource source}) async {
     if (!mounted) return;
@@ -297,10 +319,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final viewModel = ref.read(profileViewModelProvider.notifier);
-
     if (_selectedImage != null) {
-      final imageUrl = await viewModel.uploadProfileImage(_selectedImage!);
+      final imageUrl = await _viewModel.uploadProfileImage(_selectedImage!);
+      _updateProfileState();
       if (imageUrl == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -312,17 +333,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       }
     }
 
-    await viewModel.updateProfile(
-      displayName: _nameController.text.trim(),
-      bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
-      interests: _selectedInterests,
-      email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
-      phoneNumber: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
-      age: _calculateAge(),
-      gender: _selectedGender,
-      isEmailPublic: _isEmailPublic,
-      isPhonePublic: _isPhonePublic,
-    );
+    await _viewModel.updateProfile(
+          displayName: _nameController.text.trim(),
+          bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
+          interests: _selectedInterests,
+          email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
+          phoneNumber: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+          age: _calculateAge(),
+          gender: _selectedGender,
+          isEmailPublic: _isEmailPublic,
+          isPhonePublic: _isPhonePublic,
+        );
+    _updateProfileState();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -337,17 +359,16 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final profileState = ref.watch(profileViewModelProvider);
-    final isLoading = profileState.isLoading || profileState.isUploadingImage;
+    final isLoading = _profileState.isLoading || _profileState.isUploadingImage;
 
-    if (profileState.profile == null && !profileState.isLoading) {
+    if (_profileState.profile == null && !_profileState.isLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(profileViewModelProvider.notifier).loadProfile();
+        _loadProfile();
       });
     }
 
-    if (profileState.profile != null) {
-      final profile = profileState.profile!;
+    if (_profileState.profile != null) {
+      final profile = _profileState.profile!;
       if (_nameController.text != profile.displayName) {
         _nameController.text = profile.displayName;
         _bioController.text = profile.bio ?? '';
@@ -746,7 +767,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   );
                 }).toList(),
               ),
-              if (profileState.error != null) ...[
+              if (_profileState.error != null) ...[
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -755,7 +776,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    profileState.error!,
+                    _profileState.error!,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onErrorContainer,
                     ),

@@ -1,9 +1,9 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_config.dart';
 import 'ameen_app.dart';
+import 'network/repositories/notification_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,9 +27,13 @@ void main() async {
     debugPrint('Supabase initialization error: $e');
   }
 
-  runApp(
-    const ProviderScope(
-      child: AmeenApp(),
-    ),
-  );
+  // Initialize local notifications for push notifications
+  try {
+    await NotificationRepository.initializeLocalNotifications();
+    debugPrint('Local notifications initialized successfully');
+  } catch (e) {
+    debugPrint('Local notifications initialization error: $e');
+  }
+
+  runApp(const AmeenApp());
 }

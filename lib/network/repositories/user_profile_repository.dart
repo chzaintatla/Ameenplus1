@@ -1,9 +1,7 @@
 ﻿import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/user_profile.dart';
-import '../../supabase/supabase_ready_provider.dart';
 
 abstract class UserProfileRepository {
   Stream<UserProfile?> watchProfile(String uid);
@@ -185,12 +183,13 @@ class DisabledUserProfileRepository implements UserProfileRepository {
   }) async {}
 }
 
-final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {
-  final readyAsync = ref.watch(supabaseReadyProvider);
-  return readyAsync.maybeWhen(
-    data: (ready) => ready 
-        ? SupabaseUserProfileRepository(Supabase.instance.client) 
-        : DisabledUserProfileRepository(),
-    orElse: () => DisabledUserProfileRepository(),
-  );
-});
+// Helper function to get UserProfileRepository instance
+UserProfileRepository getUserProfileRepository() {
+  try {
+    // Check if Supabase is initialized
+    Supabase.instance.client;
+    return SupabaseUserProfileRepository(Supabase.instance.client);
+  } catch (e) {
+    return DisabledUserProfileRepository();
+  }
+}

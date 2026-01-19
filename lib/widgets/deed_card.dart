@@ -2,22 +2,22 @@
 import 'package:flutter/services.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../theme/ameen_theme.dart';
 import '../utils/app_constants.dart';
 import '../models/deed_model.dart';
-import '../providers/follow_providers.dart';
-import '../providers/auth_providers.dart';
-import '../providers/comments_providers.dart';
-import '../providers/deeds_providers.dart';
 import '../models/comment_model.dart';
+import '../network/repositories/follow_repository.dart';
+import '../network/repositories/deeds_repository.dart';
+import '../network/repositories/comments_repository.dart';
 
-class DeedCard extends ConsumerWidget {
+class DeedCard extends StatefulWidget {
   final DeedModel deed;
   final String? currentUserId;
   final VoidCallback? onTap;
@@ -32,25 +32,33 @@ class DeedCard extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final mediaQuery = MediaQuery.of(context);
-    final isLiked = currentUserId != null && deed.isLikedBy(currentUserId!);
-    final isOwnPost = currentUserId == deed.userId;
-    final isFollowingAsync = isOwnPost
-        ? null
-        : currentUserId != null
-            ? ref.watch(isFollowingProvider({
-                'followerId': currentUserId!,
-                'followingId': deed.userId,
-              }))
-            : null;
+  State<DeedCard> createState() => _DeedCardState();
+}
 
-    final isFavoritedAsync = currentUserId != null
-        ? ref.watch(isFavoritedProvider({
-            'deedId': deed.id,
-            'userId': currentUserId!,
-          }))
-        : null;
+class _DeedCardState extends State<DeedCard> {
+  final FollowRepository _followRepo = FollowRepository();
+  final DeedsRepository _deedsRepo = DeedsRepository();
+  final CommentsRepository _commentsRepo = CommentsRepository();
+  Stream<bool>? _isFollowingStream;
+  Stream<bool>? _isFavoritedStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final isOwnPost = widget.currentUserId == widget.deed.userId;
+    if (!isOwnPost && widget.currentUserId != null) {
+      _isFollowingStream = _followRepo.watchIsFollowing(widget.currentUserId!, widget.deed.userId);
+    }
+    if (widget.currentUserId != null) {
+      _isFavoritedStream = _deedsRepo.watchIsFavorited(widget.deed.id, widget.currentUserId!);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final isLiked = widget.currentUserId != null && widget.deed.isLikedBy(widget.currentUserId!);
+    final isOwnPost = widget.currentUserId == widget.deed.userId;
 
     return Card(
       margin: EdgeInsets.only(bottom: mediaQuery.size.height * 0.015),
@@ -69,35 +77,43 @@ class DeedCard extends ConsumerWidget {
             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
             child: Row(
               children: [
-                Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: mediaQuery.size.width * 0.06,
-                      backgroundImage: deed.userPhotoUrl != null
-                          ? CachedNetworkImageProvider(deed.userPhotoUrl!)
-                          : null,
-                      child: deed.userPhotoUrl == null
-                          ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
-                          : null,
-                    ),
-                    if (deed.isValidated)
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.verified,
-                            size: mediaQuery.size.width * 0.03,
-                            color: Colors.white,
+                // Clickable avatar
+                InkWell(
+                  onTap: () {
+                    if (!isOwnPost) {
+                      context.push('/user-profile/${widget.deed.userId}');
+                    }
+                  },
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: mediaQuery.size.width * 0.06,
+                        backgroundImage: widget.deed.userPhotoUrl != null
+                            ? CachedNetworkImageProvider(widget.deed.userPhotoUrl!)
+                            : null,
+                        child: widget.deed.userPhotoUrl == null
+                            ? Icon(Icons.person, size: mediaQuery.size.width * 0.06)
+                            : null,
+                      ),
+                      if (widget.deed.isValidated)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.verified,
+                              size: mediaQuery.size.width * 0.03,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
                 SizedBox(width: mediaQuery.size.width * 0.03),
                 Expanded(
@@ -107,19 +123,27 @@ class DeedCard extends ConsumerWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              deed.userName,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            // Clickable username
+                            child: InkWell(
+                              onTap: () {
+                                if (!isOwnPost) {
+                                  context.push('/user-profile/${widget.deed.userId}');
+                                }
+                              },
+                              child: Text(
+                                widget.deed.userName,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                         ],
                       ),
                       Text(
-                        timeago.format(deed.createdAt),
+                        timeago.format(widget.deed.createdAt),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
@@ -127,41 +151,44 @@ class DeedCard extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (!isOwnPost && currentUserId != null)
-                  isFollowingAsync?.when(
-                    data: (isFollowing) => TextButton(
-                      onPressed: () async {
-                        final repository = ref.read(followRepositoryProvider);
-                        try {
-                          if (isFollowing) {
-                            await repository.unfollowUser(
-                              currentUserId!,
-                              deed.userId,
-                            );
-                          } else {
-                            await repository.followUser(
-                              currentUserId!,
-                              deed.userId,
-                            );
+                if (!isOwnPost && widget.currentUserId != null)
+                  StreamBuilder<bool>(
+                    stream: _isFollowingStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return SizedBox(
+                          width: mediaQuery.size.width * 0.05,
+                          height: mediaQuery.size.width * 0.05,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
+                      final isFollowing = snapshot.data ?? false;
+                      return TextButton(
+                        onPressed: () async {
+                          try {
+                            if (isFollowing) {
+                              await _followRepo.unfollowUser(
+                                widget.currentUserId!,
+                                widget.deed.userId,
+                              );
+                            } else {
+                              await _followRepo.followUser(
+                                widget.currentUserId!,
+                                widget.deed.userId,
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
                           }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.toString())),
-                            );
-                          }
-                        }
-                      },
-                      child: Text(isFollowing ? 'Following' : 'Follow'),
-                    ),
-                    loading: () => SizedBox(
-                      width: mediaQuery.size.width * 0.05,
-                      height: mediaQuery.size.width * 0.05,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    error: (_, __) => const SizedBox.shrink(),
-                  ) ??
-                  const SizedBox.shrink()
+                        },
+                        child: Text(isFollowing ? 'Following' : 'Follow'),
+                      );
+                    },
+                  )
                 else
                   PopupMenuButton(
                     icon: const Icon(Icons.more_vert),
@@ -179,10 +206,9 @@ class DeedCard extends ConsumerWidget {
                         ),
                     ],
                     onSelected: (value) async {
-                      if (value == 'delete' && currentUserId != null) {
+                      if (value == 'delete' && widget.currentUserId != null) {
                         try {
-                          final repository = ref.read(deedsRepositoryProvider);
-                          await repository.deleteDeed(deed.id, currentUserId!);
+                          await _deedsRepo.deleteDeed(widget.deed.id, widget.currentUserId!);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('Post deleted')),
@@ -201,11 +227,11 @@ class DeedCard extends ConsumerWidget {
               ],
             ),
           ),
-          if (deed.arabicText != null) ...[
+          if (widget.deed.arabicText != null) ...[
             Padding(
               padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
               child: Text(
-                deed.arabicText!,
+                widget.deed.arabicText!,
                 style: AmeenTheme.arabicTextStyle(
                   fontSize: mediaQuery.size.width * 0.05,
                   fontWeight: FontWeight.w500,
@@ -216,31 +242,32 @@ class DeedCard extends ConsumerWidget {
             ),
             SizedBox(height: mediaQuery.size.height * 0.01),
           ],
-          GestureDetector(
-            onLongPress: () {
-              Clipboard.setData(ClipboardData(text: deed.content));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Description copied to clipboard')),
-              );
-            },
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
-              child: Text(
-                deed.content,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
+          if (widget.deed.content.isNotEmpty) 
+            GestureDetector(
+              onLongPress: () {
+                Clipboard.setData(ClipboardData(text: widget.deed.content));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Description copied to clipboard')),
+                );
+              },
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
+                child: Text(
+                  widget.deed.content,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ),
             ),
-          ),
-          if (deed.imageUrl != null && deed.imageUrl!.isNotEmpty) ...[
+          if (widget.deed.imageUrl != null && widget.deed.imageUrl!.isNotEmpty) ...[
             SizedBox(height: mediaQuery.size.height * 0.01),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CachedNetworkImage(
-                  imageUrl: deed.imageUrl!,
+                  imageUrl: widget.deed.imageUrl!,
                   width: double.infinity,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
@@ -273,21 +300,23 @@ class DeedCard extends ConsumerWidget {
               ),
             ),
           ],
-          if (deed.mediaUrls.isNotEmpty) ...[
+          if (widget.deed.mediaUrls.isNotEmpty) ...[
             SizedBox(height: mediaQuery.size.height * 0.01),
             SizedBox(
               height: 200,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
-                itemCount: deed.mediaUrls.length,
+                itemCount: widget.deed.mediaUrls.where((url) => url != widget.deed.imageUrl).length,
                 itemBuilder: (context, index) {
+                  final filteredUrls = widget.deed.mediaUrls.where((url) => url != widget.deed.imageUrl).toList();
+                  final mediaUrl = filteredUrls[index];
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: CachedNetworkImage(
-                        imageUrl: deed.mediaUrls[index],
+                        imageUrl: mediaUrl,
                         width: 200,
                         height: 200,
                         fit: BoxFit.cover,
@@ -313,7 +342,7 @@ class DeedCard extends ConsumerWidget {
               ),
             ),
           ],
-          if (deed.translation != null) ...{
+          if (widget.deed.translation != null) ...{
             SizedBox(height: mediaQuery.size.height * 0.01),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
@@ -324,7 +353,7 @@ class DeedCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  deed.translation!,
+                  widget.deed.translation!,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontStyle: FontStyle.italic,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -333,14 +362,14 @@ class DeedCard extends ConsumerWidget {
               ),
             ),
           },
-          if (deed.interests.isNotEmpty) ...[
+          if (widget.deed.interests.isNotEmpty) ...[
             SizedBox(height: mediaQuery.size.height * 0.01),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: deed.interests.map((interest) {
+                children: widget.deed.interests.map((interest) {
                   return Chip(
                     label: Text(
                       interest,
@@ -371,14 +400,13 @@ class DeedCard extends ConsumerWidget {
                 Expanded(
                   child: _ActionButton(
                     icon: isLiked ? Icons.favorite : Icons.favorite_border,
-                    label: '${deed.likesCount}',
+                    label: '${widget.deed.likesCount}',
                     color: isLiked
                         ? Theme.of(context).colorScheme.error
                         : Theme.of(context).colorScheme.onSurfaceVariant,
                     onTap: () async {
-                      if (currentUserId != null) {
-                        final repository = ref.read(deedsRepositoryProvider);
-                        await repository.likeDeed(deed.id, currentUserId!);
+                      if (widget.currentUserId != null) {
+                        await _deedsRepo.likeDeed(widget.deed.id, widget.currentUserId!);
                       }
                     },
                   ),
@@ -386,21 +414,20 @@ class DeedCard extends ConsumerWidget {
                 Expanded(
                   child: _ActionButton(
                     icon: Icons.comment_outlined,
-                    label: '${deed.commentsCount}',
+                    label: '${widget.deed.commentsCount}',
                     onTap: () {
-                      _showCommentsDialog(context, ref, deed.id);
+                      _showCommentsDialog(context, widget.deed.id);
                     },
                   ),
                 ),
                 Expanded(
                   child: _ActionButton(
                     icon: Icons.share_outlined,
-                    label: '${deed.sharesCount}',
+                    label: '${widget.deed.sharesCount}',
                     onTap: () async {
-                      if (currentUserId != null) {
-                        final repository = ref.read(deedsRepositoryProvider);
-                        await repository.shareDeed(deed.id, currentUserId!);
-                        final shareText = '${deed.content}\n\nShared from Ameen+';
+                      if (widget.currentUserId != null) {
+                        await _deedsRepo.shareDeed(widget.deed.id, widget.currentUserId!);
+                        final shareText = '${widget.deed.content}\n\nShared from Ameen+';
                         await Share.share(shareText);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -414,64 +441,41 @@ class DeedCard extends ConsumerWidget {
                     },
                   ),
                 ),
-                if (deed.imageUrl != null && deed.imageUrl!.isNotEmpty)
+                if (widget.deed.imageUrl != null && widget.deed.imageUrl!.isNotEmpty)
                   Expanded(
                     child: _ActionButton(
                       icon: Icons.download_outlined,
                       label: 'Download',
-                      onTap: () => _downloadFile(context, ref, deed.imageUrl!, 'image'),
+                      onTap: () => _downloadFile(context, widget.deed.imageUrl!, 'image'),
                     ),
                   ),
-                if (currentUserId != null)
+                if (widget.currentUserId != null)
                   Expanded(
-                    child: isFavoritedAsync?.when(
-                      data: (isFavorited) => _ActionButton(
-                        icon: isFavorited ? Icons.bookmark : Icons.bookmark_border,
-                        label: '',
-                        color: isFavorited
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                        onTap: () async {
-                          final repository = ref.read(deedsRepositoryProvider);
-                          final wasFavorited = isFavorited;
-                          await repository.favoriteDeed(deed.id, currentUserId!);
-                          if (context.mounted && !wasFavorited) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Favorited! +${AppConstants.xpPerFavorite} points'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      loading: () => _ActionButton(
-                        icon: Icons.bookmark_border,
-                        label: '',
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        onTap: () {},
-                      ),
-                      error: (_, __) => _ActionButton(
-                        icon: Icons.bookmark_border,
-                        label: '',
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        onTap: () {},
-                      ),
-                    ) ??
-                    _ActionButton(
-                      icon: Icons.bookmark_border,
-                      label: '',
-                      onTap: () async {
-                        final repository = ref.read(deedsRepositoryProvider);
-                        await repository.favoriteDeed(deed.id, currentUserId!);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Favorited! +${AppConstants.xpPerFavorite} points'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        }
+                    child: StreamBuilder<bool>(
+                      stream: _isFavoritedStream,
+                      builder: (context, snapshot) {
+                        final isFavorited = snapshot.data ?? false;
+                        return _ActionButton(
+                          icon: isFavorited ? Icons.bookmark : Icons.bookmark_border,
+                          label: '',
+                          color: isFavorited
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          onTap: () async {
+                            if (widget.currentUserId != null) {
+                              final wasFavorited = isFavorited;
+                              await _deedsRepo.favoriteDeed(widget.deed.id, widget.currentUserId!);
+                              if (context.mounted && !wasFavorited) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Favorited! +${AppConstants.xpPerFavorite} points'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        );
                       },
                     ),
                   )
@@ -485,7 +489,7 @@ class DeedCard extends ConsumerWidget {
     );
   }
 
-  static Future<void> _downloadFile(BuildContext context, WidgetRef ref, String url, String type) async {
+  static Future<void> _downloadFile(BuildContext context, String url, String type) async {
     try {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -532,10 +536,10 @@ class DeedCard extends ConsumerWidget {
     }
   }
 
-  void _showCommentsDialog(BuildContext context, WidgetRef ref, String deedId) {
+  void _showCommentsDialog(BuildContext context, String deedId) {
     final mediaQuery = MediaQuery.of(context);
     final commentController = TextEditingController();
-    final currentUser = ref.read(currentUserProvider).value;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     showModalBottomSheet(
       context: context,
@@ -579,7 +583,7 @@ class DeedCard extends ConsumerWidget {
             ),
             Expanded(
               child: StreamBuilder<List<CommentModel>>(
-                stream: ref.read(commentsRepositoryProvider).getComments(deedId),
+                stream: _commentsRepo.getComments(deedId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -694,9 +698,7 @@ class DeedCard extends ConsumerWidget {
                                       InkWell(
                                         onTap: () async {
                                           if (currentUser != null) {
-                                            final repository =
-                                                ref.read(commentsRepositoryProvider);
-                                            await repository.likeComment(
+                                            await _commentsRepo.likeComment(
                                               comment.id,
                                               currentUser.uid,
                                             );
@@ -744,73 +746,80 @@ class DeedCard extends ConsumerWidget {
                 },
               ),
             ),
-            Container(
-              padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+            SafeArea(
+              top: false,
+              child: Container(
+                padding: EdgeInsets.only(
+                  left: mediaQuery.size.width * 0.04,
+                  right: mediaQuery.size.width * 0.04,
+                  top: mediaQuery.size.width * 0.04,
+                  bottom: mediaQuery.size.width * 0.04 + MediaQuery.of(context).padding.bottom + 80, // Extra padding for FAB
+                ),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+                    ),
                   ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: commentController,
-                      decoration: InputDecoration(
-                        hintText: 'Write a comment...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: commentController,
+                        decoration: InputDecoration(
+                          hintText: 'Write a comment...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: mediaQuery.size.width * 0.04,
+                            vertical: mediaQuery.size.height * 0.01,
+                          ),
                         ),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: mediaQuery.size.width * 0.04,
-                          vertical: mediaQuery.size.height * 0.01,
-                        ),
+                        maxLines: null,
+                        textCapitalization: TextCapitalization.sentences,
                       ),
-                      maxLines: null,
-                      textCapitalization: TextCapitalization.sentences,
                     ),
-                  ),
-                  SizedBox(width: mediaQuery.size.width * 0.02),
-                  IconButton(
-                    onPressed: () async {
-                      if (commentController.text.trim().isEmpty) return;
-                      if (currentUser == null) return;
+                    SizedBox(width: mediaQuery.size.width * 0.02),
+                    IconButton(
+                      onPressed: () async {
+                        if (commentController.text.trim().isEmpty) return;
+                        if (currentUser == null) return;
 
-                      try {
-                        final repository = ref.read(commentsRepositoryProvider);
-                        await repository.addComment(
-                          deedId: deedId,
-                          userId: currentUser.uid,
-                          userName: currentUser.displayName ?? 'User',
-                          userPhotoUrl: currentUser.photoURL,
-                          content: commentController.text.trim(),
-                        );
-                        commentController.clear();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Comment added! +${AppConstants.xpPerComment} XP'),
-                              backgroundColor: Colors.green,
-                            ),
+                        try {
+                          await _commentsRepo.addComment(
+                            deedId: deedId,
+                            userId: currentUser.uid,
+                            userName: currentUser.displayName ?? 'User',
+                            userPhotoUrl: currentUser.photoURL,
+                            content: commentController.text.trim(),
                           );
+                          commentController.clear();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    'Comment added! +${AppConstants.xpPerComment} XP'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: ${e.toString()}')),
+                            );
+                          }
                         }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: ${e.toString()}')),
-                          );
-                        }
-                      }
-                    },
-                    icon: Icon(
-                      Icons.send,
-                      color: Theme.of(context).colorScheme.primary,
+                      },
+                      icon: Icon(
+                        Icons.send,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -855,11 +864,14 @@ class _ActionButton extends StatelessWidget {
             ),
             if (label.isNotEmpty) ...[
               SizedBox(width: mediaQuery.size.width * 0.01),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+              Flexible(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ],

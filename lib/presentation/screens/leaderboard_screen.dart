@@ -1,18 +1,64 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/ameen_theme.dart';
-import '../../providers/leaderboard_providers.dart';
+import '../../network/repositories/leaderboard_repository.dart';
 import '../../models/leaderboard_user.dart';
-import '../../providers/auth_providers.dart';
 
-class LeaderboardScreen extends ConsumerWidget {
+class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final leaderboardAsync = ref.watch(globalLeaderboardProvider);
-    final currentUser = ref.watch(authStateProvider).value;
+  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
+}
+
+class _LeaderboardScreenState extends State<LeaderboardScreen> {
+  final LeaderboardRepository _leaderboardRepo = LeaderboardRepository();
+  StreamSubscription<List<LeaderboardUser>>? _leaderboardSubscription;
+  List<LeaderboardUser> _users = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLeaderboard();
+  }
+
+  @override
+  void dispose() {
+    _leaderboardSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadLeaderboard() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final users = await _leaderboardRepo.getGlobalLeaderboard();
+      if (mounted) {
+        setState(() {
+          _users = users;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -20,116 +66,109 @@ class LeaderboardScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(globalLeaderboardProvider),
+            onPressed: _loadLeaderboard,
           ),
         ],
       ),
-      body: leaderboardAsync.when(
-        data: (users) {
-          if (users.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.emoji_events_outlined,
-                    size: 64,
+      body: _buildBody(currentUser),
+    );
+  }
+
+  Widget _buildBody(User? currentUser) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading leaderboard',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No leaderboard data yet',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Start earning XP by posting deeds and completing habits!',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          }
-
-          // Find current user's rank
-          int? currentUserRank;
-          if (currentUser != null) {
-            currentUserRank = users.indexWhere((u) => u.uid == currentUser.uid);
-            if (currentUserRank == -1) {
-              currentUserRank = null;
-            } else {
-              currentUserRank = currentUserRank + 1;
-            }
-          }
-
-          return Column(
-            children: [
-              // Top 3 Podium
-              if (users.length >= 3) _buildTopThreePodium(context, users),
-              
-              // Full Leaderboard List
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: users.length,
-                  itemBuilder: (context, index) {
-                    final user = users[index];
-                    final rank = index + 1;
-                    final isCurrentUser = currentUser != null && user.uid == currentUser.uid;
-                    final isTopThree = rank <= 3;
-
-                    return _LeaderboardCard(
-                      user: user,
-                      rank: rank,
-                      isTopThree: isTopThree,
-                      isCurrentUser: isCurrentUser,
-                    );
-                  },
-                ),
-              ),
-            ],
-          );
-        },
-        loading: () => const Center(
-          child: CircularProgressIndicator(),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadLeaderboard,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
         ),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading leaderboard',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                e.toString(),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => ref.invalidate(globalLeaderboardProvider),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
-            ],
+      );
+    }
+
+    if (_users.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.emoji_events_outlined,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No leaderboard data yet',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Start earning XP by posting deeds and completing habits!',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // Top 3 Podium
+        if (_users.length >= 3) _buildTopThreePodium(context, _users),
+        
+        // Full Leaderboard List
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _users.length,
+            itemBuilder: (context, index) {
+              final user = _users[index];
+              final rank = index + 1;
+              final isCurrentUser = currentUser != null && user.uid == currentUser.uid;
+              final isTopThree = rank <= 3;
+
+              return _LeaderboardCard(
+                user: user,
+                rank: rank,
+                isTopThree: isTopThree,
+                isCurrentUser: isCurrentUser,
+              );
+            },
           ),
         ),
-      ),
+      ],
     );
   }
 

@@ -1,7 +1,8 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'providers/auth_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'utils/app_constants.dart';
 import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/auth_screen.dart';
 import 'presentation/screens/feed_page.dart';
@@ -30,20 +31,18 @@ import 'presentation/screens/prayer_alarms_screen.dart';
 import 'presentation/screens/daily_deed_screen.dart';
 import 'presentation/screens/camera_screen.dart';
 import 'presentation/screens/add_member_screen.dart';
+import 'presentation/screens/favorites_screen.dart';
 import 'presentation/shell/ameen_shell.dart';
 
-final goRouterProvider = Provider<GoRouter>((ref) {
+GoRouter getGoRouter({void Function(ThemeMode)? onThemeModeChanged}) {
   return GoRouter(
     initialLocation: '/',
-    redirect: (context, state) {
-      final authState = ref.read(authStateProvider);
-      final guestMode = ref.read(guestModeProvider);
+    redirect: (context, state) async {
+      final user = FirebaseAuth.instance.currentUser;
+      final prefs = await SharedPreferences.getInstance();
+      final guestMode = prefs.getBool(AppConstants.keyGuestMode) ?? false;
 
-      final isAuthenticated = authState.maybeWhen(
-        data: (user) => user != null || guestMode,
-        orElse: () => false,
-      );
-
+      final isAuthenticated = user != null || guestMode;
       final isAuthRoute = state.matchedLocation == '/auth' || state.matchedLocation == '/';
       final isProtectedRoute = !isAuthRoute && state.matchedLocation != '/create-deed';
 
@@ -179,6 +178,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/favorites',
+        name: 'favorites',
+        builder: (context, state) => const FavoritesScreen(),
+      ),
+      GoRoute(
         path: '/chat/:chatId',
         name: 'chat',
         builder: (context, state) {
@@ -271,4 +275,4 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       );
     },
   );
-});
+}

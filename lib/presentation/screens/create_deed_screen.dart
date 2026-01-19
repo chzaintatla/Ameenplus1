@@ -1,17 +1,15 @@
 ﻿import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/deeds_providers.dart';
-import '../../providers/interests_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../utils/app_constants.dart';
 import '../../services/moderation_service.dart';
 import '../../services/interests_service.dart';
+import '../../network/repositories/deeds_repository.dart';
 
-class CreateDeedScreen extends ConsumerStatefulWidget {
+class CreateDeedScreen extends StatefulWidget {
   final String? initialMediaPath;
   final String? initialMediaType;
   
@@ -22,10 +20,10 @@ class CreateDeedScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<CreateDeedScreen> createState() => _CreateDeedScreenState();
+  State<CreateDeedScreen> createState() => _CreateDeedScreenState();
 }
 
-class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
+class _CreateDeedScreenState extends State<CreateDeedScreen> {
   final _contentController = TextEditingController();
   final _imagePicker = ImagePicker();
   final ModerationService _moderationService = ModerationService();
@@ -300,7 +298,7 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
     });
 
     try {
-      final user = ref.read(currentUserProvider).value;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('Please sign in to post');
       }
@@ -343,19 +341,13 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
         await _interestsService.incrementInterestCount(interest);
       }
 
-      final repository = ref.read(deedsRepositoryProvider);
+      final repository = DeedsRepository();
       await repository.createDeed(
         userId: user.uid,
         userName: user.displayName ?? 'User',
         userPhotoUrl: user.photoURL,
         deedType: AppConstants.deedGeneral,
-        content: _contentController.text.trim().isEmpty 
-            ? (_selectedMediaType == 'image' ? 'ðŸ“· Image' 
-               : _selectedMediaType == 'video' ? 'ðŸŽ¥ Video'
-               : _selectedMediaType == 'pdf' ? 'ðŸ“„ PDF'
-               : _selectedMediaType == 'audio' ? 'ðŸŽµ Audio'
-               : 'ðŸ“Ž Document')
-            : _contentController.text.trim(),
+        content: _contentController.text.trim(),
         arabicText: null,
         translation: null,
         reference: null,
@@ -365,16 +357,16 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
         filePath: _selectedFile?.path,
         mediaType: _selectedMediaType,
         interests: _selectedInterests,
-        isValidated: false, // Backend will validate and set to true
+        isValidated: true, // Posts are visible immediately
         validationReason: null,
         validationConfidence: null,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Post submitted! It will be reviewed and appear after validation.'),
-            backgroundColor: Colors.blue,
+          const SnackBar(
+            content: Text('Post created successfully!'),
+            backgroundColor: Colors.green,
           ),
         );
         context.pop();
@@ -407,7 +399,7 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final user = ref.watch(currentUserProvider).value;
+    final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -616,45 +608,48 @@ class _CreateDeedScreenState extends ConsumerState<CreateDeedScreen> {
                   ),
             ),
             SizedBox(height: mediaQuery.size.height * 0.01),
-            Consumer(
-              builder: (context, ref, child) {
-                final trendingInterestsAsync = ref.watch(trendingInterestsProvider);
-                return trendingInterestsAsync.when(
-                  data: (interests) => Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: interests.map((interest) {
-                      final isSelected = _selectedInterests.contains(interest);
-                      return FilterChip(
-                        label: Text(
-                          interest,
-                          style: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : (Theme.of(context).brightness == Brightness.light
-                                    ? Colors.black
-                                    : null),
-                          ),
+            FutureBuilder<List<String>>(
+              future: InterestsService().getTrendingInterests(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const CircularProgressIndicator();
+                }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return const SizedBox.shrink();
+                }
+                final interests = snapshot.data!;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: interests.map((interest) {
+                    final isSelected = _selectedInterests.contains(interest);
+                    return FilterChip(
+                      label: Text(
+                        interest,
+                        style: TextStyle(
+                          color: isSelected
+                              ? Colors.white
+                              : (Theme.of(context).brightness == Brightness.light
+                                  ? Colors.black
+                                  : null),
                         ),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              if (!_selectedInterests.contains(interest)) {
-                                _selectedInterests.add(interest);
-                              }
-                            } else {
-                              _selectedInterests.remove(interest);
+                      ),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            if (!_selectedInterests.contains(interest)) {
+                              _selectedInterests.add(interest);
                             }
-                          });
-                        },
-                        selectedColor: Theme.of(context).colorScheme.primaryContainer,
-                        checkmarkColor: Theme.of(context).colorScheme.primary,
-                      );
-                    }).toList(),
-                  ),
-                  loading: () => const CircularProgressIndicator(),
-                  error: (_, __) => const SizedBox.shrink(),
+                          } else {
+                            _selectedInterests.remove(interest);
+                          }
+                        });
+                      },
+                      selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                      checkmarkColor: Theme.of(context).colorScheme.primary,
+                    );
+                  }).toList(),
                 );
               },
             ),

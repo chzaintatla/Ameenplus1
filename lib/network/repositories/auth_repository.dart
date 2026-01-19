@@ -6,16 +6,10 @@ import 'package:ameen_mobile_app/firebase_config.dart';
 
 class AuthRepository {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // Google Sign-In configuration for Firebase
-  // For Android/iOS: Uses google-services.json/GoogleService-Info.plist automatically
-  // For Web: May need explicit client ID from Firebase Console
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     // Only set clientId for web platform
-    // For Android/iOS, Firebase uses google-services.json automatically
     clientId: kIsWeb ? FirebaseConfig.googleWebClientId : null,
-    // Server client ID (OAuth 2.0 client ID from Firebase Console)
-    serverClientId: FirebaseConfig.googleWebClientId,
-    scopes: ['email', 'profile', 'openid'],
+    scopes: ['email', 'profile'],
   );
 
   User? get currentUser => _auth.currentUser;

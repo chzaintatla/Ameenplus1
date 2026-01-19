@@ -1,18 +1,20 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme/ameen_theme.dart';
-import '../../providers/auth_providers.dart';
 import '../../utils/permission_service.dart';
+import '../../utils/app_constants.dart';
+import '../../network/repositories/notification_repository.dart';
 
-class SplashScreen extends ConsumerStatefulWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  ConsumerState<SplashScreen> createState() => _SplashScreenState();
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
@@ -32,35 +34,27 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    final authState = ref.read(authStateProvider);
-    final isGuest = ref.read(guestModeProvider);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final prefs = await SharedPreferences.getInstance();
+      final isGuest = prefs.getBool(AppConstants.keyGuestMode) ?? false;
 
-    authState.when(
-      data: (user) {
-        if (user != null || isGuest) {
-          context.go('/feed');
-        } else {
-          context.go('/auth');
+      if (!mounted) return;
+
+      if (user != null || isGuest) {
+        if (user != null) {
+          NotificationRepository.startNotificationListener(user.uid);
         }
-      },
-      loading: () {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!mounted) return;
-          final authStateAfterWait = ref.read(authStateProvider);
-          final guestAfterWait = ref.read(guestModeProvider);
-          authStateAfterWait.whenData((user) {
-            if (mounted) {
-              if (user != null || guestAfterWait) {
-                context.go('/feed');
-              } else {
-                context.go('/auth');
-              }
-            }
-          });
-        });
-      },
-      error: (_, __) => context.go('/auth'),
-    );
+        context.go('/feed');
+      } else {
+        // Clear guest mode if we're not authenticated and not explicitly in guest mode
+        await prefs.setBool(AppConstants.keyGuestMode, false);
+        context.go('/auth');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      context.go('/auth');
+    }
   }
 
   @override
@@ -108,6 +102,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: Colors.white.withValues(alpha: 0.9),
                     ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
               const CircularProgressIndicator(

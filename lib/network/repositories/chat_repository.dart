@@ -1,5 +1,6 @@
 ﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../models/chat_model.dart';
 import 'notification_repository.dart';
@@ -87,16 +88,14 @@ class ChatRepository {
     bool isCommunityChat = false,
   }) async {
     final message = {
+      'id': const Uuid().v4(),
       'chat_id': chatId,
       'sender_id': senderId,
-      'sender_name': senderName,
-      'sender_photo_url': senderPhotoUrl,
       'content': content,
-      'type': type,
+      'message_type': type,
       'media_url': mediaUrl,
-      'metadata': metadata,
       'read': false,
-      'timestamp': DateTime.now().toIso8601String(),
+      'created_at': DateTime.now().toIso8601String(),
       'is_community_message': isCommunityChat,
     };
 
@@ -120,29 +119,74 @@ class ChatRepository {
       if (isCommunityChat) {
         final members = List<String>.from(chatDoc['members'] ?? []);
         
-        await _supabase
-            .from(tableName)
-            .update({
-              'last_message': {
-                'content': content,
-                'sender_id': senderId,
-                'sender_name': senderName,
-              },
-              'last_message_time': DateTime.now().toIso8601String(),
-              'updated_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', chatId);
+        // Update community with last message info (if columns exist)
+        try {
+          await _supabase
+              .from(tableName)
+              .update({
+                'last_message': {
+                  'content': content,
+                  'sender_id': senderId,
+                  'sender_name': senderName,
+                },
+                'last_message_time': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', chatId);
+        } catch (e) {
+          // If last_message columns don't exist, just update updated_at
+          try {
+            await _supabase
+                .from(tableName)
+                .update({
+                  'updated_at': DateTime.now().toIso8601String(),
+                })
+                .eq('id', chatId);
+          } catch (e2) {
+            // Silently ignore if update fails
+            debugPrint('Warning: Could not update community: $e2');
+          }
+        }
 
+        // Get community name for notification
+        final communityName = chatDoc['name'] ?? 'Community';
+        
+        // Prepare notification body based on message type
+        String notificationBody;
+        if (mediaUrl != null) {
+          switch (type) {
+            case 'image':
+              notificationBody = 'Sent an image';
+              break;
+            case 'video':
+              notificationBody = 'Sent a video';
+              break;
+            case 'document':
+              notificationBody = metadata?['fileName'] != null 
+                  ? 'Sent ${metadata!['fileName']}' 
+                  : 'Sent a document';
+              break;
+            default:
+              notificationBody = 'Sent media';
+          }
+        } else {
+          notificationBody = content;
+        }
+        
         // Send notifications to other members
         for (var memberId in members) {
           if (memberId != senderId) {
-            await _notificationRepo.createNotification(
-              userId: memberId,
-              type: 'chat_message',
-              title: senderName,
-              body: content,
-              actionId: chatId,
-            );
+            try {
+              await _notificationRepo.createNotification(
+                userId: memberId,
+                type: 'community_message',
+                title: '$communityName: $senderName',
+                body: notificationBody,
+                actionId: chatId,
+              );
+            } catch (e) {
+              debugPrint('Error sending notification to $memberId: $e');
+            }
           }
         }
       } else {
@@ -192,7 +236,7 @@ class ChatRepository {
           .from('messages')
           .stream(primaryKey: ['id'])
           .eq('chat_id', chatId)
-          .order('timestamp', ascending: true)
+          .order('created_at', ascending: false)
           .limit(50);
 
       await for (final data in stream) {
@@ -256,7 +300,7 @@ class ChatRepository {
           .from('messages')
           .update({'read': true})
           .eq('chat_id', chatId)
-          .eq('read', true)
+          .eq('read', false)
           .neq('sender_id', userId);
 
       // Reset unread count
@@ -283,6 +327,38 @@ class ChatRepository {
       }
     } catch (e) {
       debugPrint('Error marking messages as read: $e');
+    }
+  }
+
+  /// Delete a message
+  /// Only the sender can delete their own message
+  Future<void> deleteMessage(String messageId, String userId) async {
+    try {
+      // Verify message belongs to user
+      final message = await _supabase
+          .from('messages')
+          .select('sender_id')
+          .eq('id', messageId)
+          .maybeSingle();
+
+      if (message == null) {
+        throw Exception('Message not found');
+      }
+
+      if (message['sender_id'] != userId) {
+        throw Exception('Unauthorized: Can only delete your own messages');
+      }
+
+      // Delete the message
+      await _supabase
+          .from('messages')
+          .delete()
+          .eq('id', messageId);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error deleting message: $e');
+      }
+      rethrow;
     }
   }
 }

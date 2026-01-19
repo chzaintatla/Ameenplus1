@@ -1,18 +1,18 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/profile_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../network/repositories/user_profile_repository.dart';
 import '../../services/daily_deeds_service.dart';
 import '../../models/daily_deed.dart';
 
-class DailyDeedScreen extends ConsumerStatefulWidget {
+class DailyDeedScreen extends StatefulWidget {
   const DailyDeedScreen({super.key});
 
   @override
-  ConsumerState<DailyDeedScreen> createState() => _DailyDeedScreenState();
+  State<DailyDeedScreen> createState() => _DailyDeedScreenState();
 }
 
-class _DailyDeedScreenState extends ConsumerState<DailyDeedScreen> {
+class _DailyDeedScreenState extends State<DailyDeedScreen> {
+  final UserProfileRepository _profileRepo = getUserProfileRepository();
   final DailyDeedsService _deedsService = DailyDeedsService();
   DailyDeed? _todaysDeed;
   bool _isLoading = true;
@@ -26,20 +26,21 @@ class _DailyDeedScreenState extends ConsumerState<DailyDeedScreen> {
   Future<void> _loadTodaysDeed() async {
     setState(() => _isLoading = true);
     try {
-      final user = ref.read(currentUserProvider).value;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         setState(() => _isLoading = false);
         return;
       }
 
-      final profileAsync = ref.read(currentUserProfileProvider);
-      final profile = profileAsync.value;
+      final profile = await _profileRepo.getProfile(user.uid);
       if (profile != null) {
         final deed = await _deedsService.getTodaysDeed(profile);
         setState(() {
           _todaysDeed = deed;
           _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       setState(() => _isLoading = false);

@@ -252,33 +252,33 @@ class HabitModel {
   static String getHabitIcon(String habitType) {
     switch (habitType) {
       case AppConstants.habitTasbeeh:
-        return 'ðŸ“¿';
+        return '📿';
       case AppConstants.habitSalah:
-        return 'ðŸ•Œ';
+        return '🕌';
       case AppConstants.habitQuran:
-        return 'ðŸ“–';
+        return '📖';
       case AppConstants.habitDua:
-        return 'ðŸ¤²';
+        return '🤲';
       case AppConstants.habitTahajjud:
-        return 'ðŸŒŸ';
+        return '🌟';
       case AppConstants.habitZikr:
-        return 'ðŸ’š';
+        return '💚';
       case AppConstants.habitFasting:
-        return 'ðŸŒ™';
+        return '🌙';
       case AppConstants.habitSadaqah:
-        return 'ðŸ’';
+        return '💝';
       case AppConstants.habitCharity:
-        return 'â¤ï¸';
+        return '❤️';
       case AppConstants.habitLearning:
-        return 'ðŸ“š';
+        return '📚';
       case AppConstants.habitGratitude:
-        return 'ðŸ™';
+        return '🙏';
       case AppConstants.habitPatience:
-        return 'â³';
+        return '⏳';
       case AppConstants.habitKindness:
-        return 'ðŸ¤';
+        return '🤝';
       default:
-        return 'âœ¨';
+        return '✨';
     }
   }
 

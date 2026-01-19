@@ -43,15 +43,15 @@ class BadgeRankService {
   String getBadgeIcon(String badgeName) {
     switch (badgeName) {
       case 'streak_warrior':
-        return 'ðŸ”¥';
+        return '🔥';
       case 'community_builder':
-        return 'ðŸ‘¥';
+        return '👥';
       case 'knowledge_seeker':
-        return 'ðŸ“š';
+        return '📚';
       case 'generous_giver':
-        return 'ðŸ’';
+        return '💝';
       default:
-        return 'â­';
+        return '⭐';
     }
   }
 }

@@ -1,22 +1,16 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/user_profile.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/profile_providers.dart';
-import '../../providers/follow_providers.dart';
-import '../../providers/deeds_providers.dart';
 import '../../network/repositories/user_profile_repository.dart';
+import '../../network/repositories/follow_repository.dart';
+import '../../network/repositories/deeds_repository.dart';
 import '../../widgets/deed_card.dart';
+import '../../models/deed_model.dart';
 
-final userProfilePreviewProvider = FutureProvider.family<UserProfile?, String>((ref, userId) async {
-  final repository = ref.read(userProfileRepositoryProvider);
-  return await repository.getProfile(userId);
-});
-
-final previewFollowersCountProvider = StreamProvider.family<int, String>((ref, userId) {
+Stream<int> _getFollowersCountStream(String userId) {
   final supabase = Supabase.instance.client;
   return supabase
       .from('users')
@@ -26,9 +20,9 @@ final previewFollowersCountProvider = StreamProvider.family<int, String>((ref, u
         if (data.isEmpty) return 0;
         return (data.first['followers_count'] as num?)?.toInt() ?? 0;
       });
-});
+}
 
-final previewFollowingCountProvider = StreamProvider.family<int, String>((ref, userId) {
+Stream<int> _getFollowingCountStream(String userId) {
   final supabase = Supabase.instance.client;
   return supabase
       .from('users')
@@ -38,9 +32,9 @@ final previewFollowingCountProvider = StreamProvider.family<int, String>((ref, u
         if (data.isEmpty) return 0;
         return (data.first['following_count'] as num?)?.toInt() ?? 0;
       });
-});
+}
 
-class UserProfilePreviewScreen extends ConsumerWidget {
+class UserProfilePreviewScreen extends StatefulWidget {
   final String userId;
 
   const UserProfilePreviewScreen({
@@ -49,18 +43,58 @@ class UserProfilePreviewScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<UserProfilePreviewScreen> createState() => _UserProfilePreviewScreenState();
+}
+
+class _UserProfilePreviewScreenState extends State<UserProfilePreviewScreen> {
+  final UserProfileRepository _profileRepo = SupabaseUserProfileRepository(Supabase.instance.client);
+  final FollowRepository _followRepo = FollowRepository();
+  final DeedsRepository _deedsRepo = DeedsRepository();
+
+  @override
+  Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final currentUser = ref.watch(authStateProvider).value;
-    final profileAsync = ref.watch(userProfilePreviewProvider(userId));
-    final isOwnProfile = currentUser?.uid == userId;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isOwnProfile = currentUser?.uid == widget.userId;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
       ),
-      body: profileAsync.when(
-        data: (profile) {
+      body: FutureBuilder<UserProfile?>(
+        future: _profileRepo.getProfile(widget.userId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading profile',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    snapshot.error.toString(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          }
+          final profile = snapshot.data;
           if (profile == null) {
             return Center(
               child: Column(
@@ -117,15 +151,15 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                           ),
                           if (!isOwnProfile) ...[
                             SizedBox(height: mediaQuery.size.height * 0.015),
-                            _buildFollowButton(context, ref, currentUser?.uid ?? '', userId),
+                            _buildFollowButton(context, currentUser?.uid ?? '', widget.userId),
                           ],
                           SizedBox(height: mediaQuery.size.height * 0.015),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildFollowerCount(context, ref, userId, true, mediaQuery),
+                              _buildFollowerCount(context, widget.userId, true, mediaQuery),
                               SizedBox(width: mediaQuery.size.width * 0.08),
-                              _buildFollowerCount(context, ref, userId, false, mediaQuery),
+                              _buildFollowerCount(context, widget.userId, false, mediaQuery),
                             ],
                           ),
                           if (profile.bio != null && profile.bio!.isNotEmpty) ...[
@@ -176,122 +210,90 @@ class UserProfilePreviewScreen extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
-                  child: _buildPostsSection(context, ref, userId, mediaQuery),
+                  child: _buildPostsSection(context, widget.userId, mediaQuery),
                 ),
               ),
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading profile',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error.toString(),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
 
-  Widget _buildFollowButton(BuildContext context, WidgetRef ref, String currentUserId, String targetUserId) {
+  Widget _buildFollowButton(BuildContext context, String currentUserId, String targetUserId) {
     if (currentUserId.isEmpty || currentUserId == targetUserId) {
       return const SizedBox.shrink();
     }
 
-    final isFollowingAsync = ref.watch(isFollowingProvider({
-      'followerId': currentUserId,
-      'followingId': targetUserId,
-    }));
-
-    return isFollowingAsync.when(
-      data: (isFollowing) => SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () async {
-            final repository = ref.read(followRepositoryProvider);
-            try {
-              if (isFollowing) {
-                await repository.unfollowUser(
-                  currentUserId,
-                  targetUserId,
-                );
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Unfollowed')),
-                  );
+    return FutureBuilder<bool>(
+      future: _followRepo.isFollowing(currentUserId, targetUserId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            width: double.infinity,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return const SizedBox.shrink();
+        }
+        final isFollowing = snapshot.data ?? false;
+        
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              try {
+                if (isFollowing) {
+                  await _followRepo.unfollowUser(currentUserId, targetUserId);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Unfollowed')),
+                    );
+                    setState(() {}); // Refresh button state
+                  }
+                } else {
+                  await _followRepo.followUser(currentUserId, targetUserId);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Following')),
+                    );
+                    setState(() {}); // Refresh button state
+                  }
                 }
-              } else {
-                await repository.followUser(
-                  currentUserId,
-                  targetUserId,
-                );
+              } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Following')),
+                    SnackBar(
+                      content: Text(e.toString()),
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    ),
                   );
                 }
               }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(e.toString()),
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                  ),
-                );
-              }
-            }
-          },
-          icon: Icon(isFollowing ? Icons.person_remove : Icons.person_add),
-          label: Text(isFollowing ? 'Following' : 'Follow'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isFollowing
-                ? Theme.of(context).colorScheme.surfaceContainerHighest
-                : Theme.of(context).colorScheme.primary,
-            foregroundColor: isFollowing
-                ? Theme.of(context).colorScheme.onSurfaceVariant
-                : Theme.of(context).colorScheme.onPrimary,
+            },
+            icon: Icon(isFollowing ? Icons.person_remove : Icons.person_add),
+            label: Text(isFollowing ? 'Following' : 'Follow'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isFollowing
+                  ? Theme.of(context).colorScheme.surfaceContainerHighest
+                  : Theme.of(context).colorScheme.primary,
+              foregroundColor: isFollowing
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : Theme.of(context).colorScheme.onPrimary,
+            ),
           ),
-        ),
-      ),
-      loading: () => const SizedBox(
-        width: double.infinity,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (_, __) => const SizedBox.shrink(),
+        );
+      },
     );
   }
 
   Widget _buildFollowerCount(
     BuildContext context,
-    WidgetRef ref,
     String userId,
     bool isFollowers,
     MediaQueryData mediaQuery,
   ) {
-    final countAsync = isFollowers
-        ? ref.watch(previewFollowersCountProvider(userId))
-        : ref.watch(previewFollowingCountProvider(userId));
-
     return InkWell(
       onTap: () {
         context.push('/followers-following/$userId', extra: {
@@ -301,58 +303,65 @@ class UserProfilePreviewScreen extends ConsumerWidget {
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: countAsync.when(
-          data: (count) => Column(
-            children: [
-              Text(
-                count.toString(),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-              ),
-              Text(
-                isFollowers ? 'Followers' : 'Following',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-          loading: () => Column(
-            children: [
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                isFollowers ? 'Followers' : 'Following',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-          error: (_, __) => Column(
-            children: [
-              const Text('0'),
-              Text(
-                isFollowers ? 'Followers' : 'Following',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
+        child: StreamBuilder<int>(
+          stream: isFollowers ? _getFollowersCountStream(userId) : _getFollowingCountStream(userId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Column(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isFollowers ? 'Followers' : 'Following',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              );
+            }
+            if (snapshot.hasError) {
+              return Column(
+                children: [
+                  const Text('0'),
+                  Text(
+                    isFollowers ? 'Followers' : 'Following',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              );
+            }
+            final count = snapshot.data ?? 0;
+            return Column(
+              children: [
+                Text(
+                  count.toString(),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+                Text(
+                  isFollowers ? 'Followers' : 'Following',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildPostsSection(BuildContext context, WidgetRef ref, String userId, MediaQueryData mediaQuery) {
-    final userDeedsAsync = ref.watch(userDeedsProvider(userId));
+  Widget _buildPostsSection(BuildContext context, String userId, MediaQueryData mediaQuery) {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,8 +383,42 @@ class UserProfilePreviewScreen extends ConsumerWidget {
           ],
         ),
         SizedBox(height: mediaQuery.size.height * 0.015),
-        userDeedsAsync.when(
-          data: (deeds) {
+        StreamBuilder<List<DeedModel>>(
+          stream: _deedsRepo.getUserDeeds(userId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return SizedBox(
+                height: mediaQuery.size.height * 0.3,
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasError) {
+              return Container(
+                padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error,
+                      size: 48,
+                    ),
+                    SizedBox(height: mediaQuery.size.height * 0.01),
+                    Text(
+                      'Error loading posts',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            final deeds = snapshot.data ?? [];
             if (deeds.isEmpty) {
               return Container(
                 padding: EdgeInsets.all(mediaQuery.size.width * 0.08),
@@ -435,7 +478,7 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                             child: DeedCard(
                               deed: deed,
-                              currentUserId: ref.read(authStateProvider).value?.uid,
+                              currentUserId: FirebaseAuth.instance.currentUser?.uid,
                             ),
                           ),
                         ),
@@ -447,54 +490,63 @@ class UserProfilePreviewScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(8),
                       color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          deed.content,
-                          style: Theme.of(context).textTheme.bodySmall,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: deed.imageUrl != null && deed.imageUrl!.isNotEmpty
+                          ? Image.network(
+                              deed.imageUrl!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              errorBuilder: (context, error, stackTrace) => _buildFallbackContent(context, deed, mediaQuery),
+                            )
+                          : deed.mediaUrls.isNotEmpty
+                              ? Image.network(
+                                  deed.mediaUrls.first,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  errorBuilder: (context, error, stackTrace) => _buildFallbackContent(context, deed, mediaQuery),
+                                )
+                              : _buildFallbackContent(context, deed, mediaQuery),
                     ),
                   ),
                 );
               },
             );
           },
-          loading: () => SizedBox(
-            height: mediaQuery.size.height * 0.3,
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, stack) => Container(
-            padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                  size: 48,
-                ),
-                SizedBox(height: mediaQuery.size.height * 0.01),
-                Text(
-                  'Error loading posts',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
         SizedBox(height: mediaQuery.size.height * 0.02),
       ],
+    );
+  }
+
+  Widget _buildFallbackContent(BuildContext context, deed, MediaQueryData mediaQuery) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: deed.content.isNotEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  deed.content,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : Center(
+              child: Icon(
+                Icons.article_outlined,
+                size: mediaQuery.size.width * 0.1,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
     );
   }
 }

@@ -7,10 +7,10 @@ import 'islamic_rag_service.dart';
 
 class GroqApiService {
   static const String _baseUrl = 'https://api.groq.com/openai/v1';
-  static const String _apiKey = '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';
+  static const String _apiKey = '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';
   
-  static const String _model = 'llama-3.3-70b-versatile';
-  static const String _visionModel = 'llama-3.2-11b-vision-preview';
+  static const String _model = 'openai/gpt-oss-120b';
+  static const String _visionModel = 'llama-3.2-11b-vision-preview'; // Keep vision model for image support
 
   Future<ContentValidationResult> validateContent({
     required String? text,
@@ -58,8 +58,12 @@ class GroqApiService {
         body: jsonEncode({
           'model': model,
           'messages': messages,
-          'temperature': 0.3,
-          'max_tokens': 500,
+          'temperature': 1,
+          'max_completion_tokens': 8192,
+          'top_p': 1,
+          'stream': false,
+          'reasoning_effort': 'medium',
+          'stop': null,
         }),
       );
 
@@ -162,8 +166,12 @@ class GroqApiService {
         body: jsonEncode({
           'model': model,
           'messages': messages,
-          'temperature': 0.7,
-          'max_tokens': 1000,
+          'temperature': 1,
+          'max_completion_tokens': 8192,
+          'top_p': 1,
+          'stream': false, // Non-streaming for chat responses
+          'reasoning_effort': 'medium',
+          'stop': null,
         }),
       ).timeout(
         const Duration(seconds: 30),
@@ -179,11 +187,14 @@ class GroqApiService {
             data['choices'][0]['message'] != null) {
           final content = data['choices'][0]['message']['content'] as String?;
           if (content != null && content.isNotEmpty) {
-            final outputFilter = IslamicOutputFilter.validateResponse(content);
+            // Clean markdown formatting from response
+            final cleanedContent = _cleanMarkdown(content);
+            
+            final outputFilter = IslamicOutputFilter.validateResponse(cleanedContent);
             if (!outputFilter.isValid) {
               return 'I apologize, but I need to provide a more accurate response. Please rephrase your question, and I will answer based on authentic Islamic sources. Allah knows best.';
             }
-            return content;
+            return cleanedContent;
           } else {
             throw Exception('Empty response from API');
           }
@@ -245,20 +256,89 @@ Format: [Deed Name] - [Description] - [Connection] - [Benefit]
               'content': prompt,
             },
           ],
-          'temperature': 0.8,
-          'max_tokens': 300,
+          'temperature': 1,
+          'max_completion_tokens': 8192,
+          'top_p': 1,
+          'stream': false,
+          'reasoning_effort': 'medium',
+          'stop': null,
         }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['choices'][0]['message']['content'] as String;
+        final content = data['choices'][0]['message']['content'] as String;
+        // Clean markdown from daily deed response too
+        return _cleanMarkdown(content);
       } else {
         throw Exception('API Error: ${response.statusCode}');
       }
     } catch (e) {
       return 'Perform an act of kindness today and make dua for others.';
     }
+  }
+
+  /// Clean markdown formatting from AI responses
+  /// Removes tables, markdown headers (##, ###), bold (**), italic (*), code blocks, etc.
+  /// Also removes placeholders like $1, 1$, etc.
+  String _cleanMarkdown(String text) {
+    String cleaned = text;
+    
+    // Remove markdown headers (# ## ### ####)
+    cleaned = cleaned.replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
+    
+    // Remove bold (**text** or __text__) - use replacement with captured group
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*\*([^*]+)\*\*'), (match) => match.group(1) ?? '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'__([^_]+)__'), (match) => match.group(1) ?? '');
+    
+    // Remove italic (*text* or _text_)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)'), (match) => match.group(1) ?? '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'(?<!_)_([^_]+)_(?!_)'), (match) => match.group(1) ?? '');
+    
+    // Remove code blocks (```code``` or `code`)
+    cleaned = cleaned.replaceAll(RegExp(r'```[\s\S]*?```'), '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'`([^`]+)`'), (match) => match.group(1) ?? '');
+    
+    // Remove markdown links [text](url)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^\)]+\)'), (match) => match.group(1) ?? '');
+    
+    // Remove markdown images ![alt](url)
+    cleaned = cleaned.replaceAll(RegExp(r'!\[([^\]]*)\]\([^\)]+\)'), '');
+    
+    // Remove table markdown (| col1 | col2 |)
+    cleaned = cleaned.replaceAll(RegExp(r'\|[^\n]*\|'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\|-+\|'), '');
+    
+    // Remove horizontal rules (--- or ***)
+    cleaned = cleaned.replaceAll(RegExp(r'^[-*]{3,}$', multiLine: true), '');
+    
+    // Remove list markers but keep the text (* item or - item or 1. item)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^[\s]*[*-]\s+(.+)', multiLine: true), (match) => match.group(1) ?? '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^[\s]*\d+\.\s+(.+)', multiLine: true), (match) => match.group(1) ?? '');
+    
+    // Remove blockquotes (> text)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^>\s+(.+)', multiLine: true), (match) => match.group(1) ?? '');
+    
+    // Remove placeholder patterns like $1, 1$, $2, 2$, etc. (standalone or with spaces)
+    cleaned = cleaned.replaceAll(RegExp(r'\$\d+'), ''); // $1, $2, etc.
+    cleaned = cleaned.replaceAll(RegExp(r'\d+\$'), ''); // 1$, 2$, etc.
+    cleaned = cleaned.replaceAll(RegExp(r'\$\s*\d+'), ''); // $ 1, $ 2, etc.
+    cleaned = cleaned.replaceAll(RegExp(r'\d+\s*\$'), ''); // 1 $, 2 $, etc.
+    
+    // Remove any remaining special markdown/placeholder characters
+    cleaned = cleaned.replaceAll(RegExp(r'\[^\]]*\]'), ''); // [anything] placeholders
+    cleaned = cleaned.replaceAll(RegExp(r'\{[^}]*\}'), ''); // {anything} placeholders
+    
+    // Clean up multiple blank lines (replace 3+ newlines with 2)
+    cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    
+    // Clean up multiple spaces (replace 3+ spaces with single space)
+    cleaned = cleaned.replaceAll(RegExp(r' {3,}'), ' ');
+    
+    // Trim whitespace
+    cleaned = cleaned.trim();
+    
+    return cleaned;
   }
 
   /// Build strong system prompt according to Islamic AI guide
@@ -312,6 +392,9 @@ Format: [Deed Name] - [Description] - [Connection] - [Benefit]
       buffer.writeln('- Do not give personal fatwas');
       buffer.writeln('- Do not speculate beyond sources');
       buffer.writeln('- Maintain respectful Islamic tone');
+      buffer.writeln('- IMPORTANT: Respond in plain text format. Do NOT use markdown formatting like **, ##, tables, code blocks, or special symbols. Use simple, clear sentences.');
+      buffer.writeln('- CRITICAL: Never use placeholders like \$1, 1\$, \$2, {placeholder}, [placeholder], or any template variables. Always provide complete, detailed responses in natural language.');
+      buffer.writeln('- Provide comprehensive, detailed explanations. Include context, examples, and relevant Islamic teachings when appropriate.');
       buffer.writeln('');
       buffer.writeln('SOURCES ALLOWED:');
       buffer.writeln('- Quran');

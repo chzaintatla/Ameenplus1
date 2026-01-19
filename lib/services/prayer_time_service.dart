@@ -215,7 +215,13 @@ class PrayerTimeService {
     
     if (!isEnabled) return;
 
-    final tone = customTone ?? prefs.getString('$_prefKeyAlarmTone$prayerName') ?? 'default';
+    final tone = customTone ?? prefs.getString('$_prefKeyAlarmTone$prayerName');
+    
+    // Use default system sound if no custom tone is specified
+    // Don't use RawResourceAndroidNotificationSound unless we have actual raw resource files
+    final androidSound = tone != null && tone != 'default' 
+        ? RawResourceAndroidNotificationSound(tone)
+        : null;
 
     await _notifications.zonedSchedule(
       _getPrayerId(prayerName),
@@ -229,7 +235,7 @@ class PrayerTimeService {
           channelDescription: 'Notifications for prayer times',
           importance: Importance.high,
           priority: Priority.high,
-          sound: RawResourceAndroidNotificationSound(tone),
+          sound: androidSound,
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,

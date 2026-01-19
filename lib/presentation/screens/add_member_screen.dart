@@ -1,13 +1,12 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/follow_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../network/repositories/follow_repository.dart';
 
-final publicProfileUsersProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
+Stream<List<Map<String, dynamic>>> _getPublicProfileUsersStream() async* {
   final supabase = Supabase.instance.client;
-  final currentUser = ref.watch(authStateProvider).value;
+  final currentUser = FirebaseAuth.instance.currentUser;
   
   try {
     final stream = supabase
@@ -41,16 +40,35 @@ final publicProfileUsersProvider = StreamProvider<List<Map<String, dynamic>>>((r
   } catch (e) {
     yield <Map<String, dynamic>>[];
   }
-});
+}
 
-class AddMemberScreen extends ConsumerWidget {
+class AddMemberScreen extends StatefulWidget {
   const AddMemberScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final usersAsync = ref.watch(publicProfileUsersProvider);
-    final currentUser = ref.watch(authStateProvider).value;
-    final followRepo = ref.read(followRepositoryProvider);
+  State<AddMemberScreen> createState() => _AddMemberScreenState();
+}
+
+class _AddMemberScreenState extends State<AddMemberScreen> {
+  final FollowRepository _followRepo = FollowRepository();
+  Stream<List<Map<String, dynamic>>>? _usersStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _usersStream = _getPublicProfileUsersStream();
+  }
+
+  void _reloadUsers() {
+    setState(() {
+      _usersStream = _getPublicProfileUsersStream();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final usersStream = _usersStream ?? _getPublicProfileUsersStream();
 
     return Scaffold(
       appBar: AppBar(
@@ -68,42 +86,88 @@ class AddMemberScreen extends ConsumerWidget {
           ],
         ),
       ),
-      body: usersAsync.when(
-        data: (users) {
-          if (users.isEmpty) {
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: usersStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.people_outline,
+                    Icons.error_outline,
                     size: 64,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: Theme.of(context).colorScheme.error,
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'No users found',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                    'Error loading users',
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'No users with public profiles available',
+                    snapshot.error.toString(),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _reloadUsers,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
                   ),
                 ],
               ),
             );
           }
+          final users = snapshot.data ?? [];
+          
+          return _buildUsersList(context, currentUser, users);
+        },
+      ),
+    );
+  }
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(publicProfileUsersProvider);
-            },
-            child: ListView.builder(
+  Widget _buildUsersList(BuildContext context, User? currentUser, List<Map<String, dynamic>> users) {
+    if (users.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No users found',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No users with public profiles available',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        _reloadUsers();
+      },
+      child: ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: users.length,
               itemBuilder: (context, index) {
@@ -210,7 +274,7 @@ class AddMemberScreen extends ConsumerWidget {
                     trailing: currentUser == null
                         ? const SizedBox.shrink()
                         : StreamBuilder<bool>(
-                            stream: followRepo.watchIsFollowing(
+                            stream: _followRepo.watchIsFollowing(
                               currentUser.uid,
                               userId,
                             ),
@@ -221,7 +285,7 @@ class AddMemberScreen extends ConsumerWidget {
                                 return OutlinedButton.icon(
                                   onPressed: () async {
                                     try {
-                                      await followRepo.unfollowUser(
+                                      await _followRepo.unfollowUser(
                                         currentUser.uid,
                                         userId,
                                       );
@@ -255,7 +319,7 @@ class AddMemberScreen extends ConsumerWidget {
                               return ElevatedButton.icon(
                                 onPressed: () async {
                                   try {
-                                    await followRepo.followUser(
+                                    await _followRepo.followUser(
                                       currentUser.uid,
                                       userId,
                                     );
@@ -291,42 +355,5 @@ class AddMemberScreen extends ConsumerWidget {
               },
             ),
           );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading users',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error.toString(),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ref.invalidate(publicProfileUsersProvider);
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    }
   }
-}

@@ -1,23 +1,46 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/feed_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../network/repositories/deeds_repository.dart';
 import '../../widgets/deed_card.dart';
+import '../../models/deed_model.dart';
 
-class FeedPage extends ConsumerWidget {
+class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<FeedPage> createState() => _FeedPageState();
+}
+
+class _FeedPageState extends State<FeedPage> {
+  final DeedsRepository _deedsRepository = DeedsRepository();
+  late Stream<List<DeedModel>> _feedStream;
+  Key _streamKey = UniqueKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _feedStream = _deedsRepository.getDeedsFeed(limit: 20);
+  }
+
+  Future<void> _refreshFeed() async {
+    if (mounted) {
+      setState(() {
+        _feedStream = _deedsRepository.getDeedsFeed(limit: 20);
+        _streamKey = UniqueKey();
+      });
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final deedsAsync = ref.watch(deedsFeedProvider);
-    final currentUser = ref.watch(currentUserProvider);
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(deedsFeedProvider);
-      },
+      onRefresh: _refreshFeed,
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -33,8 +56,56 @@ class FeedPage extends ConsumerWidget {
               ),
             ),
           ),
-          deedsAsync.when(
-            data: (deeds) {
+          StreamBuilder<List<DeedModel>>(
+            key: _streamKey,
+            stream: _feedStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: mediaQuery.size.width * 0.15,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        SizedBox(height: mediaQuery.size.height * 0.02),
+                        Text(
+                          'Error loading posts',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        SizedBox(height: mediaQuery.size.height * 0.01),
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: mediaQuery.size.width * 0.1,
+                          ),
+                          child: Text(
+                            snapshot.error.toString(),
+                            style: Theme.of(context).textTheme.bodySmall,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        SizedBox(height: mediaQuery.size.height * 0.02),
+                        ElevatedButton(
+                          onPressed: _refreshFeed,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final deeds = snapshot.data ?? [];
               if (deeds.isEmpty) {
                 return SliverFillRemaining(
                   hasScrollBody: false,
@@ -78,59 +149,26 @@ class FeedPage extends ConsumerWidget {
                   (context, index) {
                     final deed = deeds[index];
                     return Padding(
+                      key: ValueKey('deed_${deed.id}'),
                       padding: EdgeInsets.symmetric(
                         horizontal: mediaQuery.size.width * 0.04,
                         vertical: mediaQuery.size.height * 0.01,
                       ),
                       child: DeedCard(
+                        key: ValueKey('deedcard_${deed.id}'),
                         deed: deed,
-                        currentUserId: currentUser.value?.uid,
+                        currentUserId: currentUser?.uid,
                         onTap: () {},
                         onComment: () {},
                       ),
                     );
                   },
                   childCount: deeds.length,
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
                 ),
               );
             },
-            loading: () => SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (error, stack) => SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline,
-                        size: mediaQuery.size.width * 0.15,
-                        color: Theme.of(context).colorScheme.error),
-                    SizedBox(height: mediaQuery.size.height * 0.02),
-                    Text(
-                      'Error loading posts',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    SizedBox(height: mediaQuery.size.height * 0.01),
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: mediaQuery.size.width * 0.1,
-                      ),
-                      child: Text(
-                        error.toString(),
-                        style: Theme.of(context).textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    SizedBox(height: mediaQuery.size.height * 0.02),
-                    ElevatedButton(
-                      onPressed: () => ref.invalidate(deedsFeedProvider),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -146,9 +184,7 @@ class _CreatePostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final currentUser = context.findAncestorStateOfType<ConsumerState>()?.ref
-        .read(currentUserProvider)
-        .value;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Card(
       elevation: 1,

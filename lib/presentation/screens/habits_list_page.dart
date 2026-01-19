@@ -1,26 +1,45 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../providers/auth_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../utils/app_constants.dart';
 import '../../models/habit_model.dart';
-import '../../providers/habits_providers.dart';
 import '../../utils/points_service.dart';
+import '../../network/repositories/habits_repository.dart';
 
-class HabitsListPage extends ConsumerStatefulWidget {
+class HabitsListPage extends StatefulWidget {
   const HabitsListPage({super.key});
 
   @override
-  ConsumerState<HabitsListPage> createState() => _HabitsListPageState();
+  State<HabitsListPage> createState() => _HabitsListPageState();
 }
 
-class _HabitsListPageState extends ConsumerState<HabitsListPage> {
+class _HabitsListPageState extends State<HabitsListPage> {
+  final HabitsRepository _habitsRepo = HabitsRepository();
+  Stream<List<HabitModel>>? _habitsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      _habitsStream = _habitsRepo.getUserHabits(currentUser.uid);
+    }
+  }
+
+  void _reloadHabits() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      setState(() {
+        _habitsStream = _habitsRepo.getUserHabits(currentUser.uid);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final habitsAsync = ref.watch(userHabitsProvider);
-    final authState = ref.watch(authStateProvider);
-    final currentUser = authState.value;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final habitsStream = _habitsStream ?? (currentUser != null ? _habitsRepo.getUserHabits(currentUser.uid) : null);
 
     return Scaffold(
       appBar: AppBar(
@@ -35,88 +54,108 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
           ),
         ],
       ),
-      body: _buildHabitsTab(habitsAsync, currentUser),
+      body: habitsStream != null
+          ? _buildHabitsTab(habitsStream, currentUser)
+          : const Center(child: Text('Please sign in to view habits')),
     );
   }
 
-  Widget _buildHabitsTab(AsyncValue<List<HabitModel>> habitsAsync, currentUser) {
+  Widget _buildHabitsTab(Stream<List<HabitModel>> habitsStream, User? currentUser) {
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(userHabitsProvider);
+        _reloadHabits();
       },
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          habitsAsync.when(
-            data: (habits) => _buildStatsCard(context, habits, currentUser),
-            loading: () => _buildStatsCard(context, [], currentUser),
-            error: (_, __) => _buildStatsCard(context, [], currentUser),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Today\'s Habits',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              if (currentUser != null)
-                TextButton.icon(
-                  onPressed: () {
-                    _showAddHabitDialog(context, ref, currentUser.uid);
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Habit'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (currentUser != null) _buildNamazTracker(context, currentUser.uid),
-          const SizedBox(height: 12),
-          habitsAsync.when(
-            data: (habits) {
-              if (habits.isEmpty) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.check_circle_outline,
-                          size: 64,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No habits yet',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Start tracking your Islamic habits!',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            _showAddHabitDialog(context, ref, currentUser!.uid);
-                          },
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Your First Habit'),
-                        ),
-                      ],
-                    ),
+      child: StreamBuilder<List<HabitModel>>(
+        stream: habitsStream,
+        builder: (context, snapshot) {
+          final habits = snapshot.data ?? [];
+          final isLoading = snapshot.connectionState == ConnectionState.waiting;
+          
+          if (isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.error,
                   ),
-                );
-              }
+                  const SizedBox(height: 16),
+                  Text('Error loading habits: ${snapshot.error}'),
+                ],
+              ),
+            );
+          }
+          if (habits.isEmpty) {
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 64,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No habits yet',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Start tracking your Islamic habits!',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        _showAddHabitDialog(context, currentUser!.uid);
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Your First Habit'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
 
-              return Column(
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _buildStatsCard(context, habits, currentUser),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Today\'s Habits',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  if (currentUser != null)
+                    TextButton.icon(
+                      onPressed: () {
+                        _showAddHabitDialog(context, currentUser.uid);
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Habit'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (currentUser != null) _buildNamazTracker(context, currentUser.uid),
+              const SizedBox(height: 12),
+              Column(
                 children: habits.map((habit) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -161,11 +200,11 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                       onDismissed: (direction) async {
                         if (currentUser != null) {
                           try {
-                            await ref.read(habitsRepositoryProvider).deleteHabit(
+                            await _habitsRepo.deleteHabit(
                               habit.id,
                               currentUser.uid,
                             );
-                            ref.invalidate(userHabitsProvider);
+                            _reloadHabits();
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -184,45 +223,14 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                           }
                         }
                       },
-                      child: _buildHabitCard(context, ref, habit, currentUser?.uid),
+                      child: _buildHabitCard(context, habit, currentUser?.uid),
                     ),
                   );
                 }).toList(),
-              );
-            },
-            loading: () => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(),
               ),
-            ),
-            error: (error, stack) => Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Error loading habits',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      error.toString(),
-                      style: Theme.of(context).textTheme.bodySmall,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -459,7 +467,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'ðŸ”¥ Habit Streak',
+                '?? Habit Streak',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -523,7 +531,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
     );
   }
 
-  Widget _buildHabitCard(BuildContext context, WidgetRef ref, HabitModel habit, String? userId) {
+  Widget _buildHabitCard(BuildContext context, HabitModel habit, String? userId) {
     final progressPercent = habit.targetValue > 0
         ? (habit.currentValue / habit.targetValue).clamp(0.0, 1.0)
         : 0.0;
@@ -604,7 +612,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                   else if (userId != null)
                     habit.targetValue > 1 && habit.habitType == AppConstants.habitCustom
                         ? IconButton(
-                            onPressed: () => _showProgressSlider(context, ref, habit, userId, color),
+                            onPressed: () => _showProgressSlider(context, habit, userId, color),
                             icon: Icon(Icons.tune, color: color),
                             tooltip: 'Update Progress',
                           )
@@ -623,12 +631,12 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                               }
 
                               try {
-                                await ref.read(habitsRepositoryProvider).completeHabit(
+                                await _habitsRepo.completeHabit(
                                   habit.id,
                                   userId,
                                   value: 1,
                                 );
-                                ref.invalidate(userHabitsProvider);
+                                _reloadHabits();
                                 if (context.mounted) {
                                   final pointsText = habit.habitType == AppConstants.habitCustom
                                       ? '1 point'
@@ -691,33 +699,33 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
   String _getHabitEmoji(String habitType) {
     switch (habitType) {
       case AppConstants.habitSalah:
-        return 'ðŸ•Œ';
+        return '??';
       case AppConstants.habitQuran:
-        return 'ðŸ“–';
+        return '??';
       case AppConstants.habitTasbeeh:
-        return 'ðŸ“¿';
+        return '??';
       case AppConstants.habitDua:
-        return 'ðŸ¤²';
+        return '??';
       case AppConstants.habitTahajjud:
-        return 'ðŸŒŸ';
+        return '??';
       case AppConstants.habitZikr:
-        return 'ðŸ’š';
+        return '??';
       case AppConstants.habitSadaqah:
-        return 'ðŸ’';
+        return '??';
       case AppConstants.habitCharity:
-        return 'â¤ï¸';
+        return '??';
       case AppConstants.habitFasting:
-        return 'ðŸŒ™';
+        return '??';
       case AppConstants.habitLearning:
-        return 'ðŸ“š';
+        return '??';
       case AppConstants.habitGratitude:
-        return 'ðŸ™';
+        return '??';
       case AppConstants.habitPatience:
-        return 'â³';
+        return '?';
       case AppConstants.habitKindness:
-        return 'ðŸ¤';
+        return '??';
       default:
-        return 'âœ¨';
+        return '?';
     }
   }
 
@@ -758,7 +766,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
     return (xp / 100).floor() + 1;
   }
 
-  void _showProgressSlider(BuildContext context, WidgetRef ref, HabitModel habit, String userId, Color color) {
+  void _showProgressSlider(BuildContext context, HabitModel habit, String userId, Color color) {
     final currentValueNotifier = ValueNotifier<int>(habit.currentValue);
     
     showDialog(
@@ -800,12 +808,12 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
               FilledButton(
                 onPressed: () async {
                   try {
-                    await ref.read(habitsRepositoryProvider).updateHabitProgress(
+                    await _habitsRepo.updateHabitProgress(
                       habit.id,
                       userId,
                       currentValue,
                     );
-                    ref.invalidate(userHabitsProvider);
+                    _reloadHabits();
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -836,7 +844,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
     );
   }
 
-  void _showAddHabitDialog(BuildContext context, WidgetRef ref, String userId) {
+  void _showAddHabitDialog(BuildContext context, String userId) {
     final nameController = TextEditingController();
     final targetController = TextEditingController(text: '1');
     final selectedTypeNotifier = ValueNotifier<String>(AppConstants.habitCustom);
@@ -844,16 +852,16 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
     final autoRemoveNotifier = ValueNotifier<bool>(false);
 
     final predefinedHabits = [
-      {'type': AppConstants.habitSalah, 'name': 'Daily Salah', 'icon': 'ðŸ•Œ'},
-      {'type': AppConstants.habitQuran, 'name': 'Quran Reading', 'icon': 'ðŸ“–'},
-      {'type': AppConstants.habitDua, 'name': 'Morning Dua', 'icon': 'ðŸ¤²'},
-      {'type': AppConstants.habitTasbeeh, 'name': 'Tasbeeh', 'icon': 'ðŸ“¿'},
-      {'type': AppConstants.habitTahajjud, 'name': 'Tahajjud Prayer', 'icon': 'ðŸŒŸ'},
-      {'type': AppConstants.habitZikr, 'name': 'Zikr', 'icon': 'ðŸ’š'},
-      {'type': AppConstants.habitSadaqah, 'name': 'Sadaqah', 'icon': 'ðŸ’'},
-      {'type': AppConstants.habitFasting, 'name': 'Fasting', 'icon': 'ðŸŒ™'},
-      {'type': AppConstants.habitGratitude, 'name': 'Gratitude', 'icon': 'ðŸ™'},
-      {'type': AppConstants.habitKindness, 'name': 'Acts of Kindness', 'icon': 'ðŸ¤'},
+      {'type': AppConstants.habitSalah, 'name': 'Daily Salah', 'icon': '??'},
+      {'type': AppConstants.habitQuran, 'name': 'Quran Reading', 'icon': '??'},
+      {'type': AppConstants.habitDua, 'name': 'Morning Dua', 'icon': '??'},
+      {'type': AppConstants.habitTasbeeh, 'name': 'Tasbeeh', 'icon': '??'},
+      {'type': AppConstants.habitTahajjud, 'name': 'Tahajjud Prayer', 'icon': '??'},
+      {'type': AppConstants.habitZikr, 'name': 'Zikr', 'icon': '??'},
+      {'type': AppConstants.habitSadaqah, 'name': 'Sadaqah', 'icon': '??'},
+      {'type': AppConstants.habitFasting, 'name': 'Fasting', 'icon': '??'},
+      {'type': AppConstants.habitGratitude, 'name': 'Gratitude', 'icon': '??'},
+      {'type': AppConstants.habitKindness, 'name': 'Acts of Kindness', 'icon': '??'},
     ];
 
     showDialog(
@@ -946,59 +954,59 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                             items: [
                               DropdownMenuItem(
                                 value: AppConstants.habitSalah,
-                                child: const Text('ðŸ•Œ Salah'),
+                                child: const Text('?? Salah'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitQuran,
-                                child: const Text('ðŸ“– Quran Reading'),
+                                child: const Text('?? Quran Reading'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitTasbeeh,
-                                child: const Text('ðŸ“¿ Tasbeeh'),
+                                child: const Text('?? Tasbeeh'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitDua,
-                                child: const Text('ðŸ¤² Dua'),
+                                child: const Text('?? Dua'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitTahajjud,
-                                child: const Text('ðŸŒŸ Tahajjud'),
+                                child: const Text('?? Tahajjud'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitZikr,
-                                child: const Text('ðŸ’š Zikr'),
+                                child: const Text('?? Zikr'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitSadaqah,
-                                child: const Text('ðŸ’ Sadaqah'),
+                                child: const Text('?? Sadaqah'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitCharity,
-                                child: const Text('â¤ï¸ Charity'),
+                                child: const Text('?? Charity'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitFasting,
-                                child: const Text('ðŸŒ™ Fasting'),
+                                child: const Text('?? Fasting'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitLearning,
-                                child: const Text('ðŸ“š Learning'),
+                                child: const Text('?? Learning'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitGratitude,
-                                child: const Text('ðŸ™ Gratitude'),
+                                child: const Text('?? Gratitude'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitPatience,
-                                child: const Text('â³ Patience'),
+                                child: const Text('? Patience'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitKindness,
-                                child: const Text('ðŸ¤ Kindness'),
+                                child: const Text('?? Kindness'),
                               ),
                               DropdownMenuItem(
                                 value: AppConstants.habitCustom,
-                                child: const Text('âœ¨ Custom'),
+                                child: const Text('? Custom'),
                               ),
                             ],
                             onChanged: (value) {
@@ -1136,7 +1144,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                               return;
                             }
 
-                            await ref.read(habitsRepositoryProvider).createHabit(
+                            await _habitsRepo.createHabit(
                               userId: userId,
                               habitType: selectedType,
                               habitName: nameController.text.trim(),
@@ -1149,7 +1157,7 @@ class _HabitsListPageState extends ConsumerState<HabitsListPage> {
                               durationNotifier.dispose();
                               autoRemoveNotifier.dispose();
                               Navigator.pop(context);
-                              ref.invalidate(userHabitsProvider);
+                              _reloadHabits();
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: const Text('Habit added successfully!'),

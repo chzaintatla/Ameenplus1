@@ -29,7 +29,7 @@ class _HijriCalendarScreenState extends State<HijriCalendarScreen> {
   }
 
   String _getArabicDayName(int weekday) {
-    const arabicDays = ['Ø§Ù„Ø§Ø«Ù†ÙŠÙ†', 'Ø§Ù„Ø«Ù„Ø§Ø«Ø§Ø¡', 'Ø§Ù„Ø£Ø±Ø¨Ø¹Ø§Ø¡', 'Ø§Ù„Ø®Ù…ÙŠØ³', 'Ø§Ù„Ø¬Ù…Ø¹Ø©', 'Ø§Ù„Ø³Ø¨Øª', 'Ø§Ù„Ø£Ø­Ø¯'];
+    const arabicDays = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
     return arabicDays[weekday - 1];
   }
 
@@ -75,7 +75,9 @@ class _HijriCalendarScreenState extends State<HijriCalendarScreen> {
                           '${hijriDate['day']} ${hijriDate['monthName']} ${hijriDate['year']} AH',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            color: Theme.of(context).brightness == Brightness.dark 
+                                ? Colors.white 
+                                : Theme.of(context).colorScheme.onPrimaryContainer,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -83,7 +85,9 @@ class _HijriCalendarScreenState extends State<HijriCalendarScreen> {
                         Text(
                           _getArabicDayName(_selectedDate.weekday),
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            color: Theme.of(context).brightness == Brightness.dark 
+                                ? Colors.white 
+                                : Theme.of(context).colorScheme.onPrimaryContainer,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -163,29 +167,6 @@ class _HijriCalendarScreenState extends State<HijriCalendarScreen> {
                     'Gregorian Date',
                     DateFormat('MMMM d, yyyy').format(_selectedDate),
                     Icons.event,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Hijri dates are approximate. For accurate dates, consult your local Islamic calendar.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
                   ),
                 ],
               ),

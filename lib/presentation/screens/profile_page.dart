@@ -1,23 +1,18 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_profile.dart';
-import '../../providers/auth_providers.dart';
-import '../../providers/profile_providers.dart';
-import '../../providers/theme_mode_provider.dart';
-import '../../providers/deeds_providers.dart';
 import '../../viewmodels/profile_viewmodel.dart';
 import '../../widgets/deed_card.dart';
+import '../../models/deed_model.dart';
+import '../../network/repositories/auth_repository.dart';
+import '../../network/repositories/user_profile_repository.dart';
+import '../../network/repositories/deeds_repository.dart';
 
-class ProfilePage extends ConsumerStatefulWidget {
-  const ProfilePage({super.key});
-
-  @override
-  ConsumerState<ProfilePage> createState() => _ProfilePageState();
-}
-
-final followersCountProvider = StreamProvider.family<int, String>((ref, userId) {
+Stream<int> _getFollowersCountStream(String userId) {
   final supabase = Supabase.instance.client;
   return supabase
       .from('users')
@@ -27,9 +22,9 @@ final followersCountProvider = StreamProvider.family<int, String>((ref, userId) 
         if (data.isEmpty) return 0;
         return (data.first['followers_count'] as num?)?.toInt() ?? 0;
       });
-});
+}
 
-final followingCountProvider = StreamProvider.family<int, String>((ref, userId) {
+Stream<int> _getFollowingCountStream(String userId) {
   final supabase = Supabase.instance.client;
   return supabase
       .from('users')
@@ -39,26 +34,85 @@ final followingCountProvider = StreamProvider.family<int, String>((ref, userId) 
         if (data.isEmpty) return 0;
         return (data.first['following_count'] as num?)?.toInt() ?? 0;
       });
-});
+}
 
-class _ProfilePageState extends ConsumerState<ProfilePage> {
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
   bool _isExpanded = false;
+  final AuthRepository _authRepo = AuthRepository();
+  final UserProfileRepository _profileRepo = SupabaseUserProfileRepository(Supabase.instance.client);
+  final DeedsRepository _deedsRepo = DeedsRepository();
+  late final ProfileViewModel _profileViewModel;
+  ProfileState _profileState = ProfileState.initial();
+  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<UserProfile?>? _profileSubscription;
+  ThemeMode _themeMode = ThemeMode.system;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileViewModel = ProfileViewModel(
+      authRepository: _authRepo,
+      profileRepository: _profileRepo,
+    );
+    _profileViewModel.addListener(_onProfileStateChanged);
+    _loadThemeMode();
+    _setupAuthListener();
+  }
+
+  void _onProfileStateChanged() {
+    if (mounted) {
+      setState(() {
+        _profileState = _profileViewModel.state;
+      });
+    }
+  }
+
+  Future<void> _loadThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final themeModeIndex = prefs.getInt('theme_mode') ?? 0;
+    setState(() {
+      _themeMode = ThemeMode.values[themeModeIndex];
+    });
+  }
+
+  Future<void> _setThemeMode(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('theme_mode', mode.index);
+    setState(() {
+      _themeMode = mode;
+    });
+  }
+
+  void _setupAuthListener() {
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user != null) {
+        await _profileRepo.ensureProfileForUser(user);
+        _profileViewModel.loadProfile();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _profileSubscription?.cancel();
+    _profileViewModel.removeListener(_onProfileStateChanged);
+    _profileViewModel.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    ref.listen(authStateProvider, (prev, next) async {
-      final user = next.asData?.value;
-      if (user == null) return;
-      await ref.read(userProfileRepositoryProvider).ensureProfileForUser(user);
-      ref.read(profileViewModelProvider.notifier).loadProfile();
-    });
-
+    final currentUser = FirebaseAuth.instance.currentUser;
     final scheme = Theme.of(context).colorScheme;
-    final authState = ref.watch(authStateProvider);
-    final profileAsync = ref.watch(currentUserProfileProvider);
-    final profileState = ref.watch(profileViewModelProvider);
-    final themeMode = ref.watch(themeModeProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -94,16 +148,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               SwitchListTile(
               title: const Text('Public Profile'),
               subtitle: const Text('Controls visibility of profile details'),
-              value: profileAsync.valueOrNull?.isProfilePublic ?? false,
+              value: _profileState.profile?.isProfilePublic ?? false,
               onChanged: (value) async {
-                final user = authState.value;
-                if (user != null) {
-                  await ref.read(userProfileRepositoryProvider).setProfilePublic(
-                        uid: user.uid,
-                        isPublic: value,
-                      );
+                if (currentUser != null) {
+                  await _profileRepo.setProfilePublic(
+                    uid: currentUser.uid,
+                    isPublic: value,
+                  );
                   if (mounted && context.mounted) {
-                    ref.invalidate(currentUserProfileProvider);
+                    _profileViewModel.loadProfile();
                     Navigator.pop(context);
                   }
                 }
@@ -114,10 +167,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               leading: const Icon(Icons.palette),
               title: const Text('Theme'),
               trailing: DropdownButton<ThemeMode>(
-                value: themeMode,
+                value: _themeMode,
                 onChanged: (ThemeMode? newMode) {
                   if (newMode != null) {
-                    ref.read(themeModeProvider.notifier).setThemeMode(newMode);
+                    _setThemeMode(newMode);
                     if (context.mounted) Navigator.pop(context);
                   }
                 },
@@ -138,68 +191,72 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ),
             ),
             const Divider(),
-            authState.when(
-              data: (user) {
-                if (user == null) return const SizedBox.shrink();
-                return ListTile(
-                  leading: Icon(
-                    Icons.logout,
+            if (currentUser != null) ...[
+              ListTile(
+                leading: const Icon(Icons.bookmark),
+                title: const Text('Favourites'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/favorites');
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: Icon(
+                  Icons.logout,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  'Sign Out',
+                  style: TextStyle(
                     color: Theme.of(context).colorScheme.error,
                   ),
-                  title: Text(
-                    'Sign Out',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                  onTap: () async {
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      final shouldSignOut = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Sign Out'),
-                          content: const Text('Are you sure you want to sign out?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
+                ),
+                onTap: () async {
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    final shouldSignOut = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Sign Out'),
+                        content: const Text('Are you sure you want to sign out?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.error,
                             ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.error,
-                              ),
-                              child: const Text('Sign Out'),
+                            child: const Text('Sign Out'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (shouldSignOut == true && context.mounted) {
+                      try {
+                        await _authRepo.signOut();
+                        if (context.mounted) {
+                          context.go('/auth');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error signing out: $e'),
+                              backgroundColor: Theme.of(context).colorScheme.error,
                             ),
-                          ],
-                        ),
-                      );
-                      if (shouldSignOut == true && context.mounted) {
-                        try {
-                          await ref.read(authRepositoryProvider).signOut();
-                          if (context.mounted) {
-                            context.go('/auth');
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Error signing out: $e'),
-                                backgroundColor: Theme.of(context).colorScheme.error,
-                              ),
-                            );
-                          }
+                          );
                         }
                       }
                     }
-                  },
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
-          ],
+                  }
+                },
+              ),
+            ],
+            ],
           ),
         ),
       ),
@@ -211,11 +268,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Card(
               child: Padding(
                 padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
-                child: authState.when(
-                  data: (user) {
-                    final isSignedIn = user != null;
-                    final profile = profileState.profile ?? profileAsync.valueOrNull;
-                    final userId = user?.uid;
+                child: StreamBuilder<UserProfile?>(
+                  stream: currentUser != null ? _profileRepo.watchProfile(currentUser.uid) : null,
+                  builder: (context, profileSnapshot) {
+                    final profile = _profileState.profile ?? profileSnapshot.data;
+                    final userId = currentUser?.uid;
+                    final isSignedIn = currentUser != null;
 
                     return Column(
                       children: [
@@ -227,10 +285,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 backgroundColor: scheme.primary.withValues(alpha: 0.15),
                                 backgroundImage: profile?.photoUrl != null
                                     ? NetworkImage(profile!.photoUrl!)
-                                    : (user?.photoURL != null
-                                        ? NetworkImage(user!.photoURL!)
+                                    : (currentUser?.photoURL != null
+                                        ? NetworkImage(currentUser!.photoURL!)
                                         : null),
-                                child: profile?.photoUrl == null && user?.photoURL == null
+                                child: profile?.photoUrl == null && currentUser?.photoURL == null
                                     ? Icon(Icons.person_rounded,
                                         color: scheme.primary,
                                         size: mediaQuery.size.width * 0.15)
@@ -257,7 +315,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         SizedBox(height: mediaQuery.size.height * 0.02),
                         Text(
                           profile?.displayName ??
-                              user?.displayName ??
+                              currentUser?.displayName ??
                               'User',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
@@ -292,7 +350,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           if (_isExpanded) ...[
                             SizedBox(height: mediaQuery.size.height * 0.01),
                             if (profile?.email != null && profile!.email!.isNotEmpty) ...[
-                              if (isSignedIn && (userId == user.uid || profile.isEmailPublic)) ...[
+                              if (isSignedIn && (userId == currentUser?.uid || profile.isEmailPublic)) ...[
                                 _buildInfoRow(
                                   context,
                                   Icons.email_outlined,
@@ -304,7 +362,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               ],
                             ],
                             if (profile?.phoneNumber != null && profile!.phoneNumber!.isNotEmpty) ...[
-                              if (isSignedIn && (userId == user.uid || profile.isPhonePublic)) ...[
+                              if (isSignedIn && (userId == currentUser?.uid || profile.isPhonePublic)) ...[
                                 _buildInfoRow(
                                   context,
                                   Icons.phone_outlined,
@@ -441,53 +499,23 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       ],
                     );
                   },
-                  loading: () => SizedBox(
-                    height: mediaQuery.size.height * 0.2,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                  error: (e, _) => Text(
-                    e.toString(),
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
                 ),
               ),
             ),
           ),
         ),
-        authState.when(
-          data: (user) {
-            if (user == null) return const SliverToBoxAdapter(child: SizedBox.shrink());
-            return SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
-                child: _buildPostsSection(context, user.uid, mediaQuery),
-              ),
-            );
-          },
-          loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-          error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: mediaQuery.size.width * 0.04),
+            child: currentUser != null ? _buildPostsSection(context, currentUser.uid, mediaQuery) : const SizedBox.shrink(),
+          ),
         ),
       ],
-      )
+      ),
     );
   }
 
-  bool _hasDetails(UserProfile? profile) {
-    if (profile == null) return false;
-    return (profile.email != null && profile.email!.isNotEmpty) ||
-        (profile.phoneNumber != null && profile.phoneNumber!.isNotEmpty) ||
-        profile.age != null ||
-        (profile.bio != null && profile.bio!.isNotEmpty) ||
-        profile.interests.isNotEmpty;
-  }
-
   Widget _buildFollowerCount(BuildContext context, String userId, bool isFollowers, MediaQueryData mediaQuery) {
-    final countAsync = isFollowers
-        ? ref.watch(followersCountProvider(userId))
-        : ref.watch(followingCountProvider(userId));
-
     return InkWell(
       onTap: () {
         context.push('/followers-following/$userId', extra: {
@@ -497,99 +525,65 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: countAsync.when(
-          data: (count) => Column(
-            children: [
-              Text(
-                count.toString(),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-              ),
-              Text(
-                isFollowers ? 'Followers' : 'Following',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-          loading: () => Column(
-            children: [
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                isFollowers ? 'Followers' : 'Following',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-          error: (_, __) => Column(
-            children: [
-              const Text('0'),
-              Text(
-                isFollowers ? 'Followers' : 'Following',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
+        child: StreamBuilder<int>(
+          stream: isFollowers ? _getFollowersCountStream(userId) : _getFollowingCountStream(userId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Column(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isFollowers ? 'Followers' : 'Following',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              );
+            }
+            if (snapshot.hasError) {
+              return Column(
+                children: [
+                  const Text('0'),
+                  Text(
+                    isFollowers ? 'Followers' : 'Following',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              );
+            }
+            final count = snapshot.data ?? 0;
+            return Column(
+              children: [
+                Text(
+                  count.toString(),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+                Text(
+                  isFollowers ? 'Followers' : 'Following',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value,
-    MediaQueryData mediaQuery,
-  ) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: mediaQuery.size.width * 0.05,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        SizedBox(width: mediaQuery.size.width * 0.03),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildPostsSection(BuildContext context, String userId, MediaQueryData mediaQuery) {
-    final userDeedsAsync = ref.watch(userDeedsProvider(userId));
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -607,11 +601,54 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            const Spacer(),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {}); // Reload stream
+                  },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
+            ),
           ],
         ),
         SizedBox(height: mediaQuery.size.height * 0.015),
-        userDeedsAsync.when(
-          data: (deeds) {
+        StreamBuilder<List<DeedModel>>(
+          stream: _deedsRepo.getUserDeeds(userId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return SizedBox(
+                height: mediaQuery.size.height * 0.3,
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasError) {
+              return Container(
+                padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error,
+                      size: 48,
+                    ),
+                    SizedBox(height: mediaQuery.size.height * 0.01),
+                    Text(
+                      'Error loading posts',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            final deeds = snapshot.data ?? [];
+            
             if (deeds.isEmpty) {
               return Container(
                 padding: EdgeInsets.all(mediaQuery.size.width * 0.08),
@@ -630,13 +667,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     Text(
                       'No posts yet',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    SizedBox(height: mediaQuery.size.height * 0.01),
-                    Text(
-                      'Share your first post!',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
@@ -678,7 +708,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
                             child: DeedCard(
                               deed: deed,
-                              currentUserId: userId,
+                              currentUserId: FirebaseAuth.instance.currentUser?.uid,
                             ),
                           ),
                         ),
@@ -690,67 +720,112 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       borderRadius: BorderRadius.circular(8),
                       color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Text(
-                            deed.content,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: deed.imageUrl != null && deed.imageUrl!.isNotEmpty
+                          ? Image.network(
+                              deed.imageUrl!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              errorBuilder: (context, error, stackTrace) => _buildFallbackContent(context, deed, mediaQuery),
+                            )
+                          : deed.mediaUrls.isNotEmpty
+                              ? Image.network(
+                                  deed.mediaUrls.first,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  errorBuilder: (context, error, stackTrace) => _buildFallbackContent(context, deed, mediaQuery),
+                                )
+                              : _buildFallbackContent(context, deed, mediaQuery),
                     ),
                   ),
                 );
               },
             );
           },
-          loading: () => SizedBox(
-            height: mediaQuery.size.height * 0.3,
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, stack) => Container(
-            padding: EdgeInsets.all(mediaQuery.size.width * 0.04),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                  size: 48,
-                ),
-                SizedBox(height: mediaQuery.size.height * 0.01),
-                Text(
-                  'Error loading posts',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: mediaQuery.size.height * 0.01),
-                TextButton.icon(
-                  onPressed: () {
-                    ref.invalidate(userDeedsProvider(userId));
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
         ),
         SizedBox(height: mediaQuery.size.height * 0.02),
+      ],
+    );
+  }
+
+  Widget _buildFallbackContent(BuildContext context, DeedModel deed, MediaQueryData mediaQuery) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: deed.content.isNotEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  deed.content,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : Center(
+              child: Icon(
+                Icons.article_outlined,
+                size: mediaQuery.size.width * 0.1,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+    );
+  }
+
+  bool _hasDetails(UserProfile? profile) {
+    if (profile == null) return false;
+    return (profile.email != null && profile.email!.isNotEmpty) ||
+        (profile.phoneNumber != null && profile.phoneNumber!.isNotEmpty) ||
+        profile.age != null ||
+        (profile.bio != null && profile.bio!.isNotEmpty) ||
+        profile.interests.isNotEmpty;
+  }
+
+
+  Widget _buildInfoRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+    MediaQueryData mediaQuery,
+  ) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: mediaQuery.size.width * 0.05,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        SizedBox(width: mediaQuery.size.width * 0.03),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

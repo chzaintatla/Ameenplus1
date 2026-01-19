@@ -38,7 +38,7 @@
 
 class MoodSuggestion {
   final String mood;
-  final String contentType; // ayah, hadith, dua
+  final String contentType; // ayah, hadith, dua, incident
   final String arabicText;
   final String translation;
   final String? reference;

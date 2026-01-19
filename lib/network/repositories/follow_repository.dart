@@ -1,22 +1,109 @@
 ﻿import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+import 'notification_repository.dart';
 
 class FollowRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final NotificationRepository _notificationRepo = NotificationRepository();
 
   Future<void> followUser(String followerId, String followingId) async {
+    // Insert follow relationship
     await _supabase.from('follows').insert({
+      'id': const Uuid().v4(), // Generate unique ID
       'follower_id': followerId,
       'following_id': followingId,
       'created_at': DateTime.now().toIso8601String(),
     });
+
+    // Update follower count for the user being followed
+    final followingUserData = await _supabase
+        .from('users')
+        .select('followers_count, display_name')
+        .eq('id', followingId)
+        .maybeSingle();
+    
+    if (followingUserData != null) {
+      final currentFollowersCount = (followingUserData['followers_count'] as num?)?.toInt() ?? 0;
+      await _supabase
+          .from('users')
+          .update({'followers_count': currentFollowersCount + 1})
+          .eq('id', followingId);
+
+      // Notify the user being followed
+      try {
+        final followerData = await _supabase
+            .from('users')
+            .select('display_name')
+            .eq('id', followerId)
+            .maybeSingle();
+        
+        final followerName = followerData?['display_name'] ?? 'Someone';
+        
+        await _notificationRepo.createNotification(
+          userId: followingId,
+          type: 'friend_request', // Using existing type mapping in UI
+          title: 'New Follower',
+          body: '$followerName is now following you',
+          actionId: followerId,
+        );
+      } catch (e) {
+        // Silently fail notification
+      }
+    }
+
+    // Update following count for the follower
+    final followerUserData = await _supabase
+        .from('users')
+        .select('following_count')
+        .eq('id', followerId)
+        .maybeSingle();
+    
+    if (followerUserData != null) {
+      final currentFollowingCount = (followerUserData['following_count'] as num?)?.toInt() ?? 0;
+      await _supabase
+          .from('users')
+          .update({'following_count': currentFollowingCount + 1})
+          .eq('id', followerId);
+    }
   }
 
   Future<void> unfollowUser(String followerId, String followingId) async {
+    // Delete follow relationship
     await _supabase
         .from('follows')
         .delete()
         .eq('follower_id', followerId)
         .eq('following_id', followingId);
+
+    // Update follower count for the user being unfollowed
+    final followingUserData = await _supabase
+        .from('users')
+        .select('followers_count')
+        .eq('id', followingId)
+        .maybeSingle();
+    
+    if (followingUserData != null) {
+      final currentFollowersCount = (followingUserData['followers_count'] as num?)?.toInt() ?? 0;
+      await _supabase
+          .from('users')
+          .update({'followers_count': (currentFollowersCount - 1).clamp(0, 999999)})
+          .eq('id', followingId);
+    }
+
+    // Update following count for the unfollower
+    final followerUserData = await _supabase
+        .from('users')
+        .select('following_count')
+        .eq('id', followerId)
+        .maybeSingle();
+    
+    if (followerUserData != null) {
+      final currentFollowingCount = (followerUserData['following_count'] as num?)?.toInt() ?? 0;
+      await _supabase
+          .from('users')
+          .update({'following_count': (currentFollowingCount - 1).clamp(0, 999999)})
+          .eq('id', followerId);
+    }
   }
 
   Stream<bool> watchIsFollowing(String followerId, String followingId) {

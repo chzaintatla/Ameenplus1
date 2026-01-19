@@ -1,4 +1,5 @@
 ﻿import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../models/comment_model.dart';
 import 'notification_repository.dart';
@@ -15,6 +16,7 @@ class CommentsRepository {
     required String content,
   }) async {
     await _supabase.from(AppConstants.collectionComments).insert({
+      'id': const Uuid().v4(), // Generate unique ID for comment
       'deed_id': deedId,
       'user_id': userId,
       'user_name': userName,

@@ -1,8 +1,4 @@
-﻿/// Output Filter Service - Post-filter to validate AI responses
-/// for Islamic authenticity and safety
-class IslamicOutputFilter {
-  /// Validate if AI response is Islamically authentic
-  /// Returns [OutputFilterResult] with validation status
+﻿class IslamicOutputFilter {
   static OutputFilterResult validateResponse(String response) {
     // Check for speculative language (not allowed)
     if (_containsSpeculativeLanguage(response)) {
@@ -43,7 +39,6 @@ class IslamicOutputFilter {
     );
   }
 
-  /// Check for speculative language (I think, probably, in my opinion)
   static bool _containsSpeculativeLanguage(String response) {
     final lowerResponse = response.toLowerCase();
     final speculativePatterns = [
@@ -66,7 +61,6 @@ class IslamicOutputFilter {
     return false;
   }
 
-  /// Check for unsupported absolute claims
   static bool _containsUnsupportedClaims(String response) {
     final lowerResponse = response.toLowerCase();
     
@@ -87,7 +81,6 @@ class IslamicOutputFilter {
     return hasAbsolute && !hasSource && !hasAllahKnowsBest;
   }
 
-  /// Check for contradictions with Islamic principles
   static bool _containsContradictions(String response) {
     final lowerResponse = response.toLowerCase();
     
@@ -117,7 +110,6 @@ class IslamicOutputFilter {
     return false;
   }
 
-  /// Check if response mentions Islamic sources
   static bool _mentionsSources(String response) {
     final lowerResponse = response.toLowerCase();
     
@@ -141,7 +133,7 @@ class IslamicOutputFilter {
 class OutputFilterResult {
   final bool isValid;
   final String reason;
-  final double confidence; // 0.0 to 1.0
+  final double confidence;
 
   OutputFilterResult({
     required this.isValid,

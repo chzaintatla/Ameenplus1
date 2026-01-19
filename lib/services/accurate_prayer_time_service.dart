@@ -157,7 +157,13 @@ class AccuratePrayerTimeService {
     
     if (!isEnabled) return;
 
-    final tone = customTone ?? prefs.getString('$_prefKeyAlarmTone$prayerName') ?? 'default';
+    final tone = customTone ?? prefs.getString('$_prefKeyAlarmTone$prayerName');
+    
+    // Use azan sound for prayer alarms (located at res/raw/azan.mp3)
+    // RawResourceAndroidNotificationSound expects the resource name without extension
+    final androidSound = tone != null && tone != 'default' && tone == 'azan'
+        ? const RawResourceAndroidNotificationSound('azan')
+        : null;
 
     await _notifications.zonedSchedule(
       _getPrayerId(prayerName),
@@ -171,7 +177,7 @@ class AccuratePrayerTimeService {
           channelDescription: 'Notifications for prayer times',
           importance: Importance.high,
           priority: Priority.high,
-          sound: RawResourceAndroidNotificationSound(tone),
+          sound: androidSound,
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,

@@ -1,128 +1,243 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:adhan_dart/adhan_dart.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/app_database.dart';
-import '../../utils/offline_prayer_time_calculator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-final madhabProvider = StateNotifierProvider<MadhabNotifier, Madhab>((ref) {
-  return MadhabNotifier();
-});
+class PrayerTimesScreen extends StatefulWidget {
+  const PrayerTimesScreen({super.key});
 
-class MadhabNotifier extends StateNotifier<Madhab> {
-  MadhabNotifier() : super(Madhab.shafi) {
+  @override
+  State<PrayerTimesScreen> createState() => _PrayerTimesScreenState();
+}
+
+// Enum for Madhab (Asr calculation method)
+enum PrayerMadhab {
+  shafi, // Asr shadow = 1 (Shafi, Maliki, Hanbali)
+  hanafi, // Asr shadow = 2 (Hanafi)
+}
+
+class _PrayerTimesScreenState extends State<PrayerTimesScreen> with WidgetsBindingObserver {
+  // State variables
+  Map<String, String>? _prayerTimes;
+  bool _isLoading = false;
+  String? _errorMessage;
+  PrayerMadhab _madhab = PrayerMadhab.shafi;
+  Position? _currentPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadMadhab();
+    _checkAndLoadPrayerTimes();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh when app resumes (e.g., returning from settings)
+    if (state == AppLifecycleState.resumed) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _checkAndLoadPrayerTimes();
+        }
+      });
+    }
   }
 
   Future<void> _loadMadhab() async {
     final prefs = await SharedPreferences.getInstance();
     final madhabIndex = prefs.getInt('selected_madhab') ?? 0;
-    state = madhabIndex == 1 ? Madhab.hanafi : Madhab.shafi;
+    setState(() {
+      _madhab = madhabIndex == 1 ? PrayerMadhab.hanafi : PrayerMadhab.shafi;
+    });
   }
 
-  Future<void> setMadhab(Madhab madhab) async {
-    state = madhab;
+  Future<void> _saveMadhab(PrayerMadhab madhab) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('selected_madhab', madhab == Madhab.hanafi ? 1 : 0);
+    await prefs.setInt('selected_madhab', madhab == PrayerMadhab.hanafi ? 1 : 0);
+    setState(() {
+      _madhab = madhab;
+    });
+    // Reload prayer times with new madhab
+    _checkAndLoadPrayerTimes();
   }
-}
 
-final prayerTimesProvider = FutureProvider<Map<String, String>?>((ref) async {
-  try {
-    // Check if location services are enabled
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      // Try to enable location services
-      bool enabled = await Geolocator.openLocationSettings();
-      if (!enabled) {
-        return null;
+  Future<void> _checkAndLoadPrayerTimes() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Step 1: Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Location services are disabled. Please enable location services.';
+        });
+        return;
+      }
+
+      // Step 2: Check location permission
+      bool hasPermission = await _checkLocationPermission();
+      
+      if (!hasPermission) {
+        setState(() {
+          _isLoading = false;
+          _prayerTimes = null;
+        });
+        return;
+      }
+
+      // Step 3: Get current position
+      Position position = await _getCurrentPosition();
+      
+      // Step 4: Calculate prayer times
+      await _calculatePrayerTimes(position);
+      
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error: ${e.toString()}';
+        _prayerTimes = null;
+      });
+    }
+  }
+
+  Future<bool> _checkLocationPermission() async {
+    try {
+      // Check using permission_handler
+      final phStatus = await Permission.location.status;
+      if (phStatus.isGranted || phStatus.isLimited) {
+        return true;
+      }
+
+      // Check using Geolocator
+      final geoPermission = await Geolocator.checkPermission();
+      return geoPermission == LocationPermission.whileInUse || 
+             geoPermission == LocationPermission.always;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<Position> _getCurrentPosition() async {
+    // Try different accuracy levels
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+    } catch (e) {
+      try {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 15),
+        );
+      } catch (e2) {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.low,
+          timeLimit: const Duration(seconds: 15),
+        );
       }
     }
+  }
 
-    // Check and request location permission
-    LocationPermission permission = await Geolocator.checkPermission();
-    
-    // Handle different permission states
-    if (permission == LocationPermission.denied) {
-      // Request permission
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        // Permission denied, return null to show permission request UI
-        return null;
-      }
-    }
-
-    // Handle permanently denied permission
-    if (permission == LocationPermission.deniedForever) {
-      // Permission permanently denied, user needs to enable in settings
-      return null;
-    }
-
-    // Ensure we have valid permission before getting position
-    if (permission != LocationPermission.whileInUse && 
-        permission != LocationPermission.always) {
-      // Unknown or restricted permission state
-      return null;
-    }
-
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 10),
-    );
-    final madhab = ref.watch(madhabProvider);
+  Future<void> _calculatePrayerTimes(Position position) async {
     final date = DateTime.now();
-    // Get timezone offset for the current date (accounts for DST)
-    final timezone = OfflinePrayerTimeCalculator.getTimezoneOffset(date);
     
-    // Debug: Log location and timezone info
-    if (kDebugMode) {
-      debugPrint('ðŸ“ Location: ${position.latitude}, ${position.longitude}');
-      debugPrint('ðŸ• Timezone offset: $timezone hours');
-      debugPrint('ðŸ“… Date: ${date.toString()}');
-    }
-
+    // Check cache first
     final today = DateFormat('yyyy-MM-dd').format(date);
-
     final localDb = AppDatabase.instance;
     final cached = await localDb.getPrayerTimes(today);
-
-    // Check cache (recalculate if madhab changed or not in cache)
-    final cachedMadhab = cached?['madhab'] as String?;
-    final currentMadhabStr = madhab == Madhab.hanafi ? 'hanafi' : 'shafi';
     
-    // Use approximate comparison for latitude/longitude (within 0.01 degrees ~1km)
+    final cachedMadhab = cached?['madhab'] as String?;
+    final currentMadhabStr = _madhab == PrayerMadhab.hanafi ? 'hanafi' : 'shafi';
+    
+    // Check if cached location is close (within 500m)
     final cachedLat = cached?['latitude'] as double?;
     final cachedLon = cached?['longitude'] as double?;
-    final isLocationMatch = cachedLat != null && cachedLon != null &&
-        (cachedLat - position.latitude).abs() < 0.01 &&
-        (cachedLon - position.longitude).abs() < 0.01;
+    double locationDistance = double.infinity;
     
-    if (cached != null &&
-        isLocationMatch &&
-        (cachedMadhab == null || cachedMadhab == currentMadhabStr)) {
-      return {
-        'fajr': cached['fajr'] as String,
-        'dhuhr': cached['dhuhr'] as String,
-        'asr': cached['asr'] as String,
-        'maghrib': cached['maghrib'] as String,
-        'isha': cached['isha'] as String,
-      };
+    if (cachedLat != null && cachedLon != null) {
+      locationDistance = Geolocator.distanceBetween(
+        cachedLat, cachedLon,
+        position.latitude, position.longitude,
+      );
     }
-
-    final prayerTimes = OfflinePrayerTimeCalculator.calculate(
-      date: date,
-      latitude: position.latitude,
-      longitude: position.longitude,
-      timezone: timezone,
-      madhab: madhab,
+    
+    // Use cache if location is close and madhab matches
+    if (cached != null && 
+        locationDistance < 500 &&
+        (cachedMadhab == null || cachedMadhab == currentMadhabStr)) {
+      setState(() {
+        _prayerTimes = {
+          'fajr': cached['fajr'] as String,
+          'dhuhr': cached['dhuhr'] as String,
+          'asr': cached['asr'] as String,
+          'maghrib': cached['maghrib'] as String,
+          'isha': cached['isha'] as String,
+        };
+        _currentPosition = position;
+        _isLoading = false;
+      });
+      return;
+    }
+    
+    // Calculate new prayer times using adhan_dart (more accurate)
+    final coordinates = Coordinates(position.latitude, position.longitude);
+    
+    // Get calculation parameters (Muslim World League by default)
+    CalculationParameters params = CalculationMethodParameters.muslimWorldLeague();
+    
+    // Set Asr method based on madhab using adhan_dart's Madhab enum
+    // Convert our PrayerMadhab to adhan_dart's Madhab
+    final adhanMadhab = _madhab == PrayerMadhab.hanafi 
+        ? Madhab.hanafi 
+        : Madhab.shafi;
+    
+    // Update params with correct madhab
+    params = CalculationParameters(
+      method: params.method,
+      fajrAngle: params.fajrAngle,
+      ishaAngle: params.ishaAngle,
+      ishaInterval: params.ishaInterval,
+      madhab: adhanMadhab,
+      highLatitudeRule: params.highLatitudeRule,
+      adjustments: params.adjustments,
     );
-
-    final timesMap = prayerTimes.toMap();
-
+    
+    // Create PrayerTimes instance
+    final prayerTimes = PrayerTimes(
+      coordinates: coordinates,
+      date: date,
+      calculationParameters: params,
+    );
+    
+    // Format times as HH:mm
+    final format = DateFormat('HH:mm');
+    
+    final timesMap = {
+      'fajr': format.format(prayerTimes.fajr.toLocal()),
+      'dhuhr': format.format(prayerTimes.dhuhr.toLocal()),
+      'asr': format.format(prayerTimes.asr.toLocal()),
+      'maghrib': format.format(prayerTimes.maghrib.toLocal()),
+      'isha': format.format(prayerTimes.isha.toLocal()),
+    };
+    
+    // Cache the results
     await localDb.cachePrayerTimes({
       'id': today,
       'date': today,
@@ -133,309 +248,226 @@ final prayerTimesProvider = FutureProvider<Map<String, String>?>((ref) async {
       'isha': timesMap['isha']!,
       'latitude': position.latitude,
       'longitude': position.longitude,
-      'madhab': madhab == Madhab.hanafi ? 'hanafi' : 'shafi',
+      'madhab': currentMadhabStr,
       'cachedAt': DateTime.now().toIso8601String(),
     });
-
-    return timesMap;
-  } catch (e) {
-    return null;
+    
+    setState(() {
+      _prayerTimes = timesMap;
+      _currentPosition = position;
+      _isLoading = false;
+    });
   }
-});
 
-class PrayerTimesScreen extends ConsumerWidget {
-  const PrayerTimesScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final prayerTimesAsync = ref.watch(prayerTimesProvider);
-
-    final madhab = ref.watch(madhabProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Prayer Times'),
-        actions: [
-          PopupMenuButton<Madhab>(
-            tooltip: 'Select Madhab (Asr calculation method)',
-            onSelected: (value) {
-              ref.read(madhabProvider.notifier).setMadhab(value);
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: Madhab.shafi,
-                child: Text('Shafi / Maliki / Hanbali (Asr = 1 shadow)'),
-              ),
-              const PopupMenuItem(
-                value: Madhab.hanafi,
-                child: Text('Hanafi (Asr = 2 shadows)'),
-              ),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.account_balance,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    madhab == Madhab.hanafi ? 'Hanafi' : 'Shafi',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: prayerTimesAsync.when(
-        data: (prayerTimes) {
-          if (prayerTimes == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.location_off,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Location Permission Required',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'To provide accurate prayer times, we need access to your device location.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  const SizedBox(height: 24),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          // Check current permission status
-                          LocationPermission permission = await Geolocator.checkPermission();
-                          
-                          if (permission == LocationPermission.deniedForever) {
-                            // Open app settings if permanently denied
-                            await openAppSettings();
-                          } else {
-                            // Request permission
-                            permission = await Geolocator.requestPermission();
-                            if (permission == LocationPermission.deniedForever) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Please enable location permission in app settings'),
-                                    action: SnackBarAction(
-                                      label: 'Open Settings',
-                                      onPressed: openAppSettings,
-                                    ),
-                                  ),
-                                );
-                              }
-                            } else {
-                              // Refresh provider
-                              ref.invalidate(prayerTimesProvider);
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.location_on),
-                        label: const Text('Grant Permission'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await openAppSettings();
-                        },
-                        icon: const Icon(Icons.settings),
-                        label: const Text('Open Settings'),
-                      ),
-                    ],
-                  ),
-                    const SizedBox(height: 16),
-                    TextButton.icon(
-                      onPressed: () {
-                        ref.invalidate(prayerTimesProvider);
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
-                    ),
-                  ],
+  Future<void> _requestLocationPermission() async {
+    try {
+      // Try permission_handler first
+      final phStatus = await Permission.location.request();
+      if (phStatus.isGranted || phStatus.isLimited) {
+        _checkAndLoadPrayerTimes();
+        return;
+      }
+      
+      // Try Geolocator
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.whileInUse || 
+            permission == LocationPermission.always) {
+          _checkAndLoadPrayerTimes();
+        } else if (permission == LocationPermission.deniedForever) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please enable location permission in app settings'),
+                action: SnackBarAction(
+                  label: 'Open Settings',
+                  onPressed: openAppSettings,
                 ),
               ),
             );
           }
+        }
+      } else if (permission == LocationPermission.deniedForever) {
+        await openAppSettings();
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          _checkAndLoadPrayerTimes();
+        }
+      } else {
+        _checkAndLoadPrayerTimes();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error requesting permission: $e')),
+        );
+      }
+    }
+  }
 
-          final now = DateTime.now();
-          final currentTime = DateFormat('HH:mm').format(now);
+  Future<void> _openSettings() async {
+    await openAppSettings();
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      _checkAndLoadPrayerTimes();
+    }
+  }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.mosque,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        DateFormat('EEEE, MMMM d, yyyy').format(now),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Current Time: $currentTime',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
+  Widget _buildPermissionRequiredUI() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.location_off,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Location Permission Required',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'To provide accurate prayer times, we need access to your device location.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _requestLocationPermission,
+                  icon: const Icon(Icons.location_on),
+                  label: const Text('Grant Permission'),
                 ),
-              ),
-              const SizedBox(height: 16),
-              ...AppConstants.prayerNames.asMap().entries.map((entry) {
-                final index = entry.key;
-                final prayerName = entry.value;
-                final prayerTime = [
-                  prayerTimes['fajr'],
-                  prayerTimes['dhuhr'],
-                  prayerTimes['asr'],
-                  prayerTimes['maghrib'],
-                  prayerTimes['isha'],
-                ][index];
-
-                final isNext = _isNextPrayer(prayerTimes, currentTime, index);
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  color: isNext
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : null,
-                  child: ListTile(
-                    leading: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: isNext
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          _getPrayerEmoji(prayerName),
-                          style: const TextStyle(fontSize: 24),
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      prayerName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
-                        color: isNext
-                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                            : null,
-                      ),
-                    ),
-                    trailing: Text(
-                      prayerTime ?? '--:--',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isNext
-                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-              const SizedBox(height: 24),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Prayer times are calculated based on your location. Times may vary slightly based on your calculation method.',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _openSettings,
+                  icon: const Icon(Icons.settings),
+                  label: const Text('Open Settings'),
                 ),
-              ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading prayer times',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error.toString(),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ref.invalidate(prayerTimesProvider);
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: _isLoading ? null : _checkAndLoadPrayerTimes,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPrayerTimesUI() {
+    if (_prayerTimes == null) return _buildPermissionRequiredUI();
+
+    final now = DateTime.now();
+    final currentTime = DateFormat('HH:mm').format(now);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.mosque,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  DateFormat('EEEE, MMMM d, yyyy').format(now),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Current Time: $currentTime',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...AppConstants.prayerNames.asMap().entries.map((entry) {
+          final index = entry.key;
+          final prayerName = entry.value;
+          final prayerTime = [
+            _prayerTimes!['fajr'],
+            _prayerTimes!['dhuhr'],
+            _prayerTimes!['asr'],
+            _prayerTimes!['maghrib'],
+            _prayerTimes!['isha'],
+          ][index];
+
+          final isNext = _isNextPrayer(_prayerTimes!, currentTime, index);
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            color: isNext
+                ? Theme.of(context).colorScheme.primaryContainer
+                : null,
+            child: ListTile(
+              leading: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: isNext
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    _getPrayerEmoji(prayerName),
+                    style: const TextStyle(fontSize: 24),
+                  ),
+                ),
+              ),
+              title: Text(
+                prayerName,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
+                  color: isNext
+                      ? Theme.of(context).colorScheme.onPrimaryContainer
+                      : null,
+                ),
+              ),
+              trailing: Text(
+                prayerTime ?? '--:--',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isNext
+                      ? Theme.of(context).colorScheme.onPrimaryContainer
+                      : Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ],
     );
   }
 
@@ -451,7 +483,6 @@ class PrayerTimesScreen extends ConsumerWidget {
     final current = _timeToMinutes(currentTime);
     int? nextPrayerIndex;
 
-    // Find the next prayer time
     for (int i = 0; i < times.length; i++) {
       if (times[i] != null) {
         final prayerMinutes = _timeToMinutes(times[i]!);
@@ -462,12 +493,10 @@ class PrayerTimesScreen extends ConsumerWidget {
       }
     }
 
-    // If no prayer found today, next is tomorrow's Fajr (index 0)
     if (nextPrayerIndex == null) {
       return index == 0;
     }
 
-    // Return true if current index is the next prayer
     return nextPrayerIndex == index;
   }
 
@@ -482,17 +511,100 @@ class PrayerTimesScreen extends ConsumerWidget {
   String _getPrayerEmoji(String prayerName) {
     switch (prayerName.toLowerCase()) {
       case 'fajr':
-        return 'ðŸŒ…';
+        return '🌅';
       case 'dhuhr':
-        return 'â˜€ï¸';
+        return '☀️';
       case 'asr':
-        return 'ðŸŒ¤ï¸';
+        return '🌤️';
       case 'maghrib':
-        return 'ðŸŒ†';
+        return '🌆';
       case 'isha':
-        return 'ðŸŒ™';
+        return '🌙';
       default:
-        return 'ðŸ•Œ';
+        return '🕌';
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Prayer Times'),
+        actions: [
+          PopupMenuButton<PrayerMadhab>(
+            tooltip: 'Select Madhab (Asr calculation method)',
+            onSelected: _saveMadhab,
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: PrayerMadhab.shafi,
+                child: Text('Shafi / Maliki / Hanbali (Asr = 1 shadow)'),
+              ),
+              const PopupMenuItem(
+                value: PrayerMadhab.hanafi,
+                child: Text('Hanafi (Asr = 2 shadows)'),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.account_balance,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _madhab == PrayerMadhab.hanafi ? 'Hanafi' : 'Shafi',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading prayer times',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                        child: Text(
+                          _errorMessage!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: _checkAndLoadPrayerTimes,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _prayerTimes == null
+                  ? _buildPermissionRequiredUI()
+                  : _buildPrayerTimesUI(),
+    );
   }
 }

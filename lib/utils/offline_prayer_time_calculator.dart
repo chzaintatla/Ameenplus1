@@ -95,14 +95,27 @@ class OfflinePrayerTimeCalculator {
 
   /// Calculate solar noon (Dhuhr time)
   /// Returns time in LOCAL timezone
+  /// Formula: Local Solar Noon = 12:00 + (longitude offset) - (equation of time) + (timezone offset)
+  /// Where longitude offset = longitude / 15 (converted to minutes = longitude * 4)
   static DateTime _solarNoon(
       double lon, double tz, double eot, DateTime date) {
     // Calculate solar noon in minutes from midnight (local time)
-    // 720 = 12:00 in minutes
-    // 4 * lon = longitude correction (1 degree = 4 minutes)
-    // eot = equation of time correction
-    // tz * 60 = timezone offset in minutes
-    final minutes = (720 - 4 * lon - eot + tz * 60);
+    // 720 = 12:00 in minutes (noon)
+    // Longitude correction: each degree of longitude = 4 minutes
+    //   For east longitude (positive): sun rises earlier, so we subtract: -4 * lon
+    //   For west longitude (negative): sun rises later, so we add: -4 * lon (becomes positive)
+    // Equation of time correction: accounts for Earth's elliptical orbit (in minutes)
+    //   Negative when sun is fast, positive when sun is slow
+    //   We subtract it: -eot
+    // Timezone offset: converts to local clock time (in hours, converted to minutes)
+    //   For east of UTC (positive): add timezone offset: +tz * 60
+    //   For west of UTC (negative): add timezone offset: +tz * 60 (tz is negative)
+    // 
+    // Correct formula: 720 - 4*lon - eot + tz*60
+    // But we need to ensure timezone is correctly applied
+    final longitudeOffsetMinutes = lon * 4.0; // 1 degree = 4 minutes
+    final timezoneOffsetMinutes = tz * 60.0; // Convert hours to minutes
+    final minutes = 720.0 - longitudeOffsetMinutes - eot + timezoneOffsetMinutes;
     final totalMinutes = minutes.round();
     
     // Normalize to 0-1439 minutes (0-23:59)

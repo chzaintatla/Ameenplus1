@@ -1,19 +1,24 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../providers/auth_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../network/repositories/auth_repository.dart';
 import '../../theme/ameen_theme.dart';
+import '../../utils/app_constants.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
 
-class AuthScreen extends ConsumerStatefulWidget {
+class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  ConsumerState<AuthScreen> createState() => _AuthScreenState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends ConsumerState<AuthScreen> {
+class _AuthScreenState extends State<AuthScreen> {
+  final AuthRepository _authRepository = AuthRepository();
+  StreamSubscription<User?>? _authSubscription;
   bool _isLogin = true;
 
   void _toggleMode() {
@@ -22,24 +27,41 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
   }
 
-  Future<void> _signInWithGoogle() async {
-    try {
-      final repository = ref.read(authRepositoryProvider);
-      await repository.signInWithGoogle();
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        final authState = ref.read(authStateProvider);
-        authState.whenData((user) {
-          if (user != null && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Signed in successfully!'),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-              ),
-            );
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null && mounted) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
             context.go('/feed');
           }
         });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _signInWithGoogle() async {
+    try {
+      await _authRepository.signInWithGoogle();
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Signed in successfully!'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+            ),
+          );
+          context.go('/feed');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -53,26 +75,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
-
-  void _continueAsGuest() {
-    ref.read(guestModeProvider.notifier).state = true;
-    context.go('/feed');
+  Future<void> _continueAsGuest() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConstants.keyGuestMode, true);
+    if (mounted) {
+      context.go('/feed');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(authStateProvider, (previous, next) {
-      next.whenData((user) {
-        if (user != null && mounted && context.mounted) {
-          Future.delayed(const Duration(milliseconds: 300), () {
-            if (mounted && context.mounted) {
-              context.go('/feed');
-            }
-          });
-        }
-      });
-    });
-
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
