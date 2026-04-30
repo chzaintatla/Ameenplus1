@@ -197,8 +197,6 @@ class OfflinePrayerTimeCalculator {
     return _timeForAngle(date, lat, dec, angle, dhuhr, true);
   }
 
-  /// Get timezone offset from DateTime (in hours)
-  /// Returns the offset from UTC for the device's local timezone
   static double getTimezoneOffset(DateTime date) {
     // Create a local time at noon
     final localTime = DateTime(date.year, date.month, date.day, 12, 0, 0);

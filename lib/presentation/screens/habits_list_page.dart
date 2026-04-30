@@ -697,36 +697,7 @@ class _HabitsListPageState extends State<HabitsListPage> {
   }
 
   String _getHabitEmoji(String habitType) {
-    switch (habitType) {
-      case AppConstants.habitSalah:
-        return '??';
-      case AppConstants.habitQuran:
-        return '??';
-      case AppConstants.habitTasbeeh:
-        return '??';
-      case AppConstants.habitDua:
-        return '??';
-      case AppConstants.habitTahajjud:
-        return '??';
-      case AppConstants.habitZikr:
-        return '??';
-      case AppConstants.habitSadaqah:
-        return '??';
-      case AppConstants.habitCharity:
-        return '??';
-      case AppConstants.habitFasting:
-        return '??';
-      case AppConstants.habitLearning:
-        return '??';
-      case AppConstants.habitGratitude:
-        return '??';
-      case AppConstants.habitPatience:
-        return '?';
-      case AppConstants.habitKindness:
-        return '??';
-      default:
-        return '?';
-    }
+    return HabitModel.getHabitIcon(habitType);
   }
 
   Color _getHabitColor(String habitType, BuildContext context) {
@@ -852,16 +823,16 @@ class _HabitsListPageState extends State<HabitsListPage> {
     final autoRemoveNotifier = ValueNotifier<bool>(false);
 
     final predefinedHabits = [
-      {'type': AppConstants.habitSalah, 'name': 'Daily Salah', 'icon': '??'},
-      {'type': AppConstants.habitQuran, 'name': 'Quran Reading', 'icon': '??'},
-      {'type': AppConstants.habitDua, 'name': 'Morning Dua', 'icon': '??'},
-      {'type': AppConstants.habitTasbeeh, 'name': 'Tasbeeh', 'icon': '??'},
-      {'type': AppConstants.habitTahajjud, 'name': 'Tahajjud Prayer', 'icon': '??'},
-      {'type': AppConstants.habitZikr, 'name': 'Zikr', 'icon': '??'},
-      {'type': AppConstants.habitSadaqah, 'name': 'Sadaqah', 'icon': '??'},
-      {'type': AppConstants.habitFasting, 'name': 'Fasting', 'icon': '??'},
-      {'type': AppConstants.habitGratitude, 'name': 'Gratitude', 'icon': '??'},
-      {'type': AppConstants.habitKindness, 'name': 'Acts of Kindness', 'icon': '??'},
+      {'type': AppConstants.habitSalah, 'name': 'Daily Salah', 'icon': HabitModel.getHabitIcon(AppConstants.habitSalah)},
+      {'type': AppConstants.habitQuran, 'name': 'Quran Reading', 'icon': HabitModel.getHabitIcon(AppConstants.habitQuran)},
+      {'type': AppConstants.habitDua, 'name': 'Morning Dua', 'icon': HabitModel.getHabitIcon(AppConstants.habitDua)},
+      {'type': AppConstants.habitTasbeeh, 'name': 'Tasbeeh', 'icon': HabitModel.getHabitIcon(AppConstants.habitTasbeeh)},
+      {'type': AppConstants.habitTahajjud, 'name': 'Tahajjud Prayer', 'icon': HabitModel.getHabitIcon(AppConstants.habitTahajjud)},
+      {'type': AppConstants.habitZikr, 'name': 'Zikr', 'icon': HabitModel.getHabitIcon(AppConstants.habitZikr)},
+      {'type': AppConstants.habitSadaqah, 'name': 'Sadaqah', 'icon': HabitModel.getHabitIcon(AppConstants.habitSadaqah)},
+      {'type': AppConstants.habitFasting, 'name': 'Fasting', 'icon': HabitModel.getHabitIcon(AppConstants.habitFasting)},
+      {'type': AppConstants.habitGratitude, 'name': 'Gratitude', 'icon': HabitModel.getHabitIcon(AppConstants.habitGratitude)},
+      {'type': AppConstants.habitKindness, 'name': 'Acts of Kindness', 'icon': HabitModel.getHabitIcon(AppConstants.habitKindness)},
     ];
 
     showDialog(

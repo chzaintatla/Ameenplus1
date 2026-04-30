@@ -1,4 +1,5 @@
-﻿import 'package:supabase_flutter/supabase_flutter.dart';
+﻿
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/app_database.dart';

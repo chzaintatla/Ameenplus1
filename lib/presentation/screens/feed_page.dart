@@ -21,13 +21,15 @@ class _FeedPageState extends State<FeedPage> {
   @override
   void initState() {
     super.initState();
-    _feedStream = _deedsRepository.getDeedsFeed(limit: 20);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _feedStream = _deedsRepository.getDeedsFeed(limit: 20, currentUserId: uid);
   }
 
   Future<void> _refreshFeed() async {
     if (mounted) {
       setState(() {
-        _feedStream = _deedsRepository.getDeedsFeed(limit: 20);
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        _feedStream = _deedsRepository.getDeedsFeed(limit: 20, currentUserId: uid);
         _streamKey = UniqueKey();
       });
       await Future.delayed(const Duration(milliseconds: 100));

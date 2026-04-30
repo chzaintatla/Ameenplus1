@@ -20,6 +20,8 @@ class DeedsRepository {
   final NotificationRepository _notificationRepo = NotificationRepository();
   final AIContentValidationService _validationService = AIContentValidationService();
 
+  /// Create a deed/post - saved with isValidated: false initially
+  /// Backend validation will update isValidated to true if content is valid
   Future<DeedModel> createDeed({
     required String userId,
     required String userName,
@@ -35,6 +37,7 @@ class DeedsRepository {
     String? filePath,
     String? mediaType,
     List<String> interests = const [],
+    // Note: isValidated should always be false when creating - backend will validate
     bool isValidated = false,
     String? validationReason,
     double? validationConfidence,
@@ -174,23 +177,27 @@ class DeedsRepository {
     }
   }
 
-
-
-
+  /// Get deeds feed - only returns validated posts with content
+  /// Uses real-time subscription for live updates
+  /// Deduplication happens ONCE here - UI should NEVER dedupe realtime data
   Stream<List<DeedModel>> getDeedsFeed({int limit = 20}) {
     return _supabase
         .from(AppConstants.collectionDeeds)
         .stream(primaryKey: ['id'])
-        .eq('is_validated', true)
+        .eq('is_validated', true) // Only show validated posts
         .order('created_at', ascending: false)
-        .limit(limit)
+        .limit(limit) // Query only what we need - no double limiting
         .map((data) {
+          // CRITICAL: Deduplicate by ID using LinkedHashMap to preserve insertion order
+          // Use LinkedHashMap to ensure consistent ordering
           final map = <String, DeedModel>{};
           
           for (final row in data) {
             try {
+              // Validate ID before parsing
               final rowIdValue = row['id'];
               if (rowIdValue == null) {
+                // Skip rows with null IDs
                 if (kDebugMode) {
                   debugPrint('Skipping deed with null ID: $row');
                 }
@@ -199,6 +206,7 @@ class DeedsRepository {
               
               final rowId = rowIdValue.toString().trim();
               if (rowId.isEmpty) {
+                // Skip rows with empty IDs
                 if (kDebugMode) {
                   debugPrint('Skipping deed with empty ID: $row');
                 }
@@ -206,20 +214,26 @@ class DeedsRepository {
               }
               
               final deed = DeedModel.fromMap(row);
-
+              // Double-check ID after parsing
               if (deed.id.isNotEmpty && deed.id.trim().isNotEmpty && deed.id == rowId) {
+                // Always use the latest version (overwrite if exists)
                 map[deed.id] = deed;
               }
             } catch (e) {
+              // Skip invalid entries silently
               if (kDebugMode) {
                 debugPrint('Error parsing deed in feed: $e');
               }
             }
           }
           
+          // Convert to list maintaining order (Map.values preserves insertion order)
           final list = map.values.toList();
+          
+          // Final sort to ensure newest first (data from Supabase should already be sorted, but double-check)
           list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           
+          // Final safety check: ensure no duplicates in the final list
           final seenIds = <String>{};
           final finalList = <DeedModel>[];
           for (final deed in list) {
@@ -233,6 +247,8 @@ class DeedsRepository {
         });
   }
 
+  /// Get user deeds - shows all posts (validated and pending) for the user
+  /// Uses real-time subscription for live updates
   Stream<List<DeedModel>> getUserDeeds(String userId, {int limit = 50}) {
     return _supabase
         .from(AppConstants.collectionDeeds)
@@ -243,6 +259,7 @@ class DeedsRepository {
         .map((data) => data.map((item) => DeedModel.fromMap(item)).toList());
   }
 
+  /// Watch if a deed is liked by a user (real-time)
   Stream<bool> watchIsLiked(String deedId, String userId) {
     return _supabase
         .from('likes')
@@ -263,6 +280,7 @@ class DeedsRepository {
 
     if (deedData == null) return;
 
+    // Check if already liked
     final existingLike = await _supabase
         .from('likes')
         .select()
@@ -273,12 +291,14 @@ class DeedsRepository {
     final isLiked = existingLike != null;
 
     if (isLiked) {
+      // Unlike: delete from likes table
       await _supabase
           .from('likes')
           .delete()
           .eq('deed_id', deedId)
           .eq('user_id', userId);
     } else {
+      // Like: insert into likes table
       await _supabase
           .from('likes')
           .insert({
@@ -305,6 +325,7 @@ class DeedsRepository {
             likerName = likerData['display_name'] as String? ?? 'Someone';
           }
         } catch (e) {
+          // Silently fail - use default name if unable to fetch liker data
           if (kDebugMode) {
             debugPrint('Error fetching liker data: $e');
           }
@@ -320,6 +341,7 @@ class DeedsRepository {
       }
     }
 
+    // Get updated like count
     final likesCount = await _supabase
         .from('likes')
         .select('id')
@@ -347,6 +369,7 @@ class DeedsRepository {
   }
 
   Future<void> favoriteDeed(String deedId, String userId) async {
+    // Check if already favorited
     final existingFavorite = await _supabase
         .from('favorites')
         .select()
@@ -355,12 +378,14 @@ class DeedsRepository {
         .maybeSingle();
 
     if (existingFavorite != null) {
+      // Unfavorite: delete from favorites table
       await _supabase
           .from('favorites')
           .delete()
           .eq('deed_id', deedId)
           .eq('user_id', userId);
     } else {
+      // Favorite: insert into favorites table
       await _supabase
           .from('favorites')
           .insert({
@@ -414,6 +439,7 @@ class DeedsRepository {
         final path = uri.pathSegments.last;
         await StorageService.deleteFile(bucket: 'deeds', filePath: path);
       } catch (e) {
+        // Silently fail - continue deletion even if image deletion fails
         if (kDebugMode) {
           debugPrint('Error deleting image: $e');
         }
@@ -428,6 +454,7 @@ class DeedsRepository {
           final path = uri.pathSegments.last;
           await StorageService.deleteFile(bucket: 'deeds', filePath: path);
         } catch (e) {
+          // Silently fail - continue deletion even if media deletion fails
           if (kDebugMode) {
             debugPrint('Error deleting media: $e');
           }

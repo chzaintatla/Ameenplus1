@@ -159,7 +159,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================
 -- 3. TABLES (Firebase UIDs = TEXT)
 -- ============================================
-
+`
 -- Users Table
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, -- Firebase UID

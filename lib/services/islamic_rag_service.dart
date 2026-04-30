@@ -1,12 +1,4 @@
-﻿/// RAG (Retrieval-Augmented Generation) Service
-/// Provides Islamic knowledge base context for AI responses
-/// 
-/// Note: This is a basic implementation. For production, you would:
-/// 1. Use a vector database (e.g., Pinecone, Weaviate, or local embeddings)
-/// 2. Generate embeddings for Quran/Hadith texts
-/// 3. Perform semantic search to retrieve relevant verses/hadith
-/// 4. Inject retrieved context into prompts
-class IslamicRAGService {
+﻿class IslamicRAGService {
   /// Basic knowledge base - In production, this would be in a vector DB
   /// This is a simplified example with key Islamic concepts
   static const Map<String, List<String>> _knowledgeBase = {

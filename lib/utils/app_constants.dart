@@ -34,11 +34,11 @@
   static const int xpPerLike = 1;
   static const int xpPerShare = 1;
   static const int xpPerFavorite = 1;
-  static const int xpPerHabitComplete = 15;
+  static const int xpPerHabitComplete = 1;
   static const int xpPerStreakDay = 5;
   static const int xpPerFriend = 5;
-  static const int xpPerCommunityPost = 10;
-  static const int xpDailyLoginBonus = 10;
+  static const int xpPerCommunityPost = 1;
+  static const int xpDailyLoginBonus = 1;
 
   static const int streakMissedPenaltyDays = 1;
 

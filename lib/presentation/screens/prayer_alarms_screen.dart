@@ -226,14 +226,14 @@ class _PrayerAlarmsScreenState extends State<PrayerAlarmsScreen> {
                         );
                       }),
                       const SizedBox(height: 24),
-                      Center(
-                        child: Text(
-                          'Azan sound will play from assets/audios/azan.mp3',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
+                      // Center(
+                      //   child: Text(
+                      //     'Azan sound will play from assets/audios/azan.mp3',
+                      //     style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      //       fontStyle: FontStyle.italic,
+                      //     ),
+                      //   ),
+                      // ),
                     ],
                   ),
                 ),

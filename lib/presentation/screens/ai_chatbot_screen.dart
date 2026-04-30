@@ -580,7 +580,7 @@ class _AIChatbotScreenState extends State<AIChatbotScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Delete All Messages'),
         content: const Text(
-          'Are you sure you want to delete all chat messages? This action cannot be undone.',
+          'Are you sure you want to delete all chat messages?',
         ),
         actions: [
           TextButton(
@@ -797,7 +797,7 @@ class _ChatBubble extends StatelessWidget {
               child: Icon(
                 Icons.person,
                 size: 18,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                color: Colors.white,
               ),
             ),
           ],

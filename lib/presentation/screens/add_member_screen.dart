@@ -78,10 +78,10 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
           children: [
             const Text('Add Members'),
             Text(
-              'Users with public profiles',
+              'Find users with public profiles',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
             ),
           ],
         ),
